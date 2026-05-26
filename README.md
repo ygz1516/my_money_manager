@@ -18,7 +18,7 @@ jobs:
       - name: Install Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.2'   # 与 flet 要求的版本一致
+          flutter-version: '3.41.7'   # 与 flet 要求的版本一致
           channel: 'stable'
 
       - name: Install dependencies
