@@ -15,20 +15,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Flutter SDK
+      - name: Install Flutter SDK (3.41.7)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.41.7'   # 与 flet 要求的版本一致
+          flutter-version: '3.41.7'
           channel: 'stable'
+          cache: true
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install flet matplotlib pandas openpyxl chardet
 
-      - name: Build APK
-        run: flet build apk --module-name deposit_app_flet
+      - name: Build APK (non-interactive)
+        run: flet build apk --module-name deposit_app_flet --yes
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: deposit-app
