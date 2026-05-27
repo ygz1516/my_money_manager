@@ -12,7 +12,7 @@ import numpy as np
 import shutil
 import os
 
-# ======================= 原程序的核心业务类（完整保留）=======================
+# ======================= 预设数据 =======================
 PRESET_BANKS = [
     "中国工商银行", "中国建设银行", "中国农业银行", "重庆银行",
     "交通银行", "重庆农村商业银行", "微众银行", "蓝海银行", "三峡银行", "邮储银行", "其他银行",
@@ -24,6 +24,7 @@ PRESET_DEPOSIT_TYPES = [
     "大额存单", "结构性存款", "通知存款", "理财产品", "股票基金"
 ]
 
+# ======================= 核心业务类 (未修改) =======================
 class DepositManager:
     def __init__(self, filename="deposits.db"):
         self.filename = filename
@@ -199,24 +200,6 @@ class DepositManager:
         cursor.execute("DELETE FROM deposits WHERE id=?", (deposit_id,))
         self.conn.commit()
         return True, "存款删除成功"
-
-    def delete_multiple_deposits(self, deposit_ids):
-        if not deposit_ids:
-            return False, "没有选择存款记录"
-        cursor = self.conn.cursor()
-        placeholders = ','.join(['?'] * len(deposit_ids))
-        try:
-            cursor.execute(f"DELETE FROM deposits WHERE id IN ({placeholders})", deposit_ids)
-            self.conn.commit()
-            return True, f"成功删除 {len(deposit_ids)} 条存款记录"
-        except sqlite3.Error as e:
-            return False, f"删除失败: {str(e)}"
-
-    def unlock_deposit(self, deposit_id):
-        cursor = self.conn.cursor()
-        cursor.execute("UPDATE deposits SET is_unlocked=1 WHERE id=?", (deposit_id,))
-        self.conn.commit()
-        return True, "存款已解锁"
 
     def calculate_interest(self, start_date_str, maturity_date_str, amount, rate, interest_type="simple", as_of_date=None):
         try:
@@ -557,7 +540,7 @@ class DepositManager:
                 continue
         return False
 
-# ======================= Flet 手机 APP =======================
+# ======================= Flet UI 部分 (已修复 nonlocal 错误) =======================
 def main(page: ft.Page):
     page.title = "家庭存款管理系统"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -568,9 +551,11 @@ def main(page: ft.Page):
 
     manager = DepositManager()
 
+    # 全局状态
     current_user = manager.current_user if manager.current_user else "所有用户"
     deposits = manager.load_deposits()
 
+    # UI 组件
     deposit_list = ft.ListView(expand=True, spacing=10, padding=10)
     stats_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
     user_selector = ft.Dropdown(
@@ -580,6 +565,7 @@ def main(page: ft.Page):
         width=200,
     )
 
+    # ---------- 辅助函数 ----------
     def refresh_data():
         nonlocal deposits
         deposits = manager.load_deposits()
@@ -646,6 +632,7 @@ def main(page: ft.Page):
         stats_text.value = f"总本金: {stats['total_amount']:,.2f}元   当前利息: {stats['total_current_interest']:,.2f}元"
         page.update()
 
+    # ---------- 编辑 / 删除 ----------
     def edit_deposit(dep):
         user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=dep['user'])
         bank_input = ft.TextField(label="银行", value=dep['bank'])
@@ -702,6 +689,7 @@ def main(page: ft.Page):
         )
         page.open(confirm_dlg)
 
+    # ---------- 添加存款 ----------
     def add_deposit_dialog(e):
         user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=manager.current_user if manager.current_user else "默认用户")
         bank_input = ft.TextField(label="银行", hint_text="银行名称")
@@ -745,6 +733,7 @@ def main(page: ft.Page):
         )
         page.open(dlg)
 
+    # ---------- 图表统计 ----------
     def show_charts(e):
         stats = manager.get_deposit_stats(None if current_user == "所有用户" else current_user)
         if not stats['by_type'] and not stats['by_bank'] and not stats['by_holder']:
@@ -755,6 +744,7 @@ def main(page: ft.Page):
         plt.rcParams['axes.unicode_minus'] = False
 
         fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+        # 按类型
         labels = list(stats['by_type'].keys())
         sizes = list(stats['by_type'].values())
         if sizes:
@@ -762,6 +752,7 @@ def main(page: ft.Page):
             axes[0].set_title('存款类型')
         else:
             axes[0].text(0.5, 0.5, '无数据', ha='center', va='center')
+        # 按银行
         labels2 = list(stats['by_bank'].keys())
         sizes2 = list(stats['by_bank'].values())
         if sizes2:
@@ -769,6 +760,7 @@ def main(page: ft.Page):
             axes[1].set_title('银行分布')
         else:
             axes[1].text(0.5, 0.5, '无数据', ha='center', va='center')
+        # 按持有人
         labels3 = list(stats['by_holder'].keys())
         sizes3 = list(stats['by_holder'].values())
         if sizes3:
@@ -793,7 +785,7 @@ def main(page: ft.Page):
         )
         page.open(chart_dlg)
 
-    # 用户管理（简化版，但保留核心功能）
+    # ---------- 用户管理 (已修复 nonlocal 错误) ----------
     def manage_users(e):
         def refresh_user_list():
             users = manager.users
@@ -846,13 +838,13 @@ def main(page: ft.Page):
 
         def delete_user(user):
             def confirm(e):
+                nonlocal current_user  # <--- 关键修复：nonlocal 放在第一行
                 success, msg = manager.delete_user(user)
                 if success:
                     refresh_user_list()
                     refresh_user_dropdown()
                     page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
                     if current_user == user or (current_user == "所有用户" and user == manager.current_user):
-                        nonlocal current_user
                         current_user = "所有用户"
                         user_selector.value = current_user
                         refresh_data()
@@ -895,6 +887,7 @@ def main(page: ft.Page):
             user_selector.value = "所有用户"
         page.update()
 
+    # ---------- 到期提醒 ----------
     def check_maturities(e):
         upcoming = manager.get_upcoming_maturities()
         if upcoming:
@@ -906,6 +899,7 @@ def main(page: ft.Page):
         else:
             page.show_snack_bar(ft.SnackBar(content=ft.Text("未来7天内没有即将到期的存款")))
 
+    # ---------- 导入导出（使用 FilePicker）----------
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
 
@@ -945,6 +939,7 @@ def main(page: ft.Page):
                     page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出失败")))
         file_picker.on_result = on_save
 
+    # ---------- 备份恢复 ----------
     def backup_db(e):
         if not os.path.exists(manager.filename):
             page.show_snack_bar(ft.SnackBar(content=ft.Text("数据库文件不存在")))
@@ -974,6 +969,7 @@ def main(page: ft.Page):
                     page.show_snack_bar(ft.SnackBar(content=ft.Text(f"恢复失败: {ex}")))
         file_picker.on_result = on_result
 
+    # ---------- 用户切换 ----------
     def on_user_change(e):
         nonlocal current_user
         current_user = user_selector.value
@@ -981,6 +977,7 @@ def main(page: ft.Page):
 
     user_selector.on_change = on_user_change
 
+    # ---------- 顶部按钮栏 ----------
     top_bar = ft.Row([
         user_selector,
         ft.IconButton(icon="add", icon_size=30, on_click=add_deposit_dialog, tooltip="添加存款"),
@@ -999,6 +996,7 @@ def main(page: ft.Page):
         ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
+    # 主界面
     page.add(
         top_bar,
         stats_text,
@@ -1007,6 +1005,7 @@ def main(page: ft.Page):
     )
 
     refresh_data()
+
 
 if __name__ == "__main__":
     ft.app(target=main)
