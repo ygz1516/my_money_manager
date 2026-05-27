@@ -5,8 +5,8 @@ import re
 import csv
 from collections import defaultdict
 import os
+import shutil
 
-# ======================= 预设数据 =======================
 PRESET_BANKS = [
     "中国工商银行", "中国建设银行", "中国农业银行", "重庆银行",
     "交通银行", "重庆农村商业银行", "微众银行", "蓝海银行", "三峡银行", "邮储银行", "其他银行",
@@ -18,7 +18,6 @@ PRESET_DEPOSIT_TYPES = [
     "大额存单", "结构性存款", "通知存款", "理财产品", "股票基金"
 ]
 
-# ======================= 核心业务类 (与之前完全相同) =======================
 class DepositManager:
     def __init__(self, filename="deposits.db"):
         self.filename = filename
@@ -302,6 +301,24 @@ class DepositManager:
         """, (today, target_date))
         return cursor.fetchall()
 
+    def restore_from_path(self, source_path):
+        """从任意路径恢复数据库"""
+        if not os.path.exists(source_path):
+            return False, f"文件不存在: {source_path}"
+        try:
+            self.conn.close()
+            shutil.copy2(source_path, self.filename)
+            self.conn = sqlite3.connect(self.filename)
+            self.users = self.load_users()
+            self.current_user = self.users[0] if self.users else "默认用户"
+            return True, "恢复成功！请重启应用或刷新页面"
+        except Exception as e:
+            return False, f"恢复失败: {str(e)}"
+
+    def restore_from_download(self):
+        download_path = "/storage/emulated/0/Download/deposits.db"
+        return self.restore_from_path(download_path)
+
     @staticmethod
     def convert_date_format(date_str):
         if not date_str or date_str.strip() == "":
@@ -339,7 +356,7 @@ class DepositManager:
                 continue
         return False
 
-# ======================= Flet UI 部分 (无 FilePicker，无 matplotlib) =======================
+
 def main(page: ft.Page):
     page.title = "家庭存款管理系统"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -642,6 +659,40 @@ def main(page: ft.Page):
         else:
             page.show_snack_bar(ft.SnackBar(content=ft.Text("未来7天内没有即将到期的存款")))
 
+    def restore_from_download(e):
+        success, msg = manager.restore_from_download()
+        if success:
+            page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
+            refresh_data()
+        else:
+            page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
+
+    def restore_manual(e):
+        def do_restore(path):
+            if not path:
+                return
+            success, msg = manager.restore_from_path(path.strip())
+            if success:
+                page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
+                refresh_data()
+            else:
+                page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
+            page.close(dlg)
+
+        def on_submit(e):
+            do_restore(path_input.value)
+
+        path_input = ft.TextField(label="文件路径", hint_text="例如 /storage/emulated/0/Download/deposits.db", width=400)
+        dlg = ft.AlertDialog(
+            title=ft.Text("输入数据库文件完整路径"),
+            content=ft.Container(content=path_input, padding=10),
+            actions=[
+                ft.TextButton("取消", on_click=lambda e: page.close(dlg)),
+                ft.TextButton("恢复", on_click=on_submit),
+            ],
+        )
+        page.open(dlg)
+
     def on_user_change(e):
         nonlocal current_user
         current_user = user_selector.value
@@ -649,7 +700,6 @@ def main(page: ft.Page):
 
     user_selector.on_change = on_user_change
 
-    # 顶部按钮栏（移除了导入导出备份恢复等需要 FilePicker 的功能）
     top_bar = ft.Row([
         user_selector,
         ft.IconButton(icon="add", icon_size=30, on_click=add_deposit_dialog, tooltip="添加存款"),
@@ -659,12 +709,8 @@ def main(page: ft.Page):
             items=[
                 ft.PopupMenuItem(text="用户管理", on_click=manage_users),
                 ft.PopupMenuItem(text="到期提醒", on_click=check_maturities),
-                # 以下功能依赖 FilePicker，先注释掉
-                # ft.PopupMenuItem(text="导入数据", on_click=import_data),
-                # ft.PopupMenuItem(text="导出数据", on_click=export_data),
-                # ft.PopupMenuItem(text="导出模板", on_click=export_template),
-                # ft.PopupMenuItem(text="备份数据库", on_click=backup_db),
-                # ft.PopupMenuItem(text="恢复数据库", on_click=restore_db),
+                ft.PopupMenuItem(text="从 Download 恢复", on_click=restore_from_download),
+                ft.PopupMenuItem(text="手动输入路径恢复", on_click=restore_manual),
             ]
         ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
