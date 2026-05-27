@@ -3,7 +3,6 @@ import sqlite3
 from datetime import datetime, timedelta
 import re
 import csv
-import chardet
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import io
@@ -12,7 +11,6 @@ import pandas as pd
 import numpy as np
 import shutil
 import os
-
 
 # ======================= 原程序的核心业务类（完整保留）=======================
 PRESET_BANKS = [
@@ -450,78 +448,77 @@ class DepositManager:
             return False, f"导入Excel文件时出错: {str(e)}"
 
     def import_from_csv(self, filename):
-        try:
-            with open(filename, 'rb') as f:
-                raw_data = f.read(10000)
-                result = chardet.detect(raw_data)
-                encoding = result['encoding'] or 'utf-8'
-            with open(filename, 'r', encoding=encoding) as f:
-                first_line = f.readline()
-                f.seek(0)
-                has_header = "银行" in first_line or "bank" in first_line.lower()
-                reader = csv.DictReader(f) if has_header else csv.reader(f)
-                if not has_header:
-                    fieldnames = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-                    reader = csv.DictReader(f, fieldnames=fieldnames)
-                new_deposits = []
-                unknown_users = set()
-                for row in reader:
-                    bank = row.get('银行', row.get('bank', '')) or "其他银行"
-                    deposit_type = row.get('存款类型', row.get('deposit_type', row.get('存款名称', ''))) or "其他类型"
-                    user = row.get('持有人', row.get('user', row.get('用户', ''))) or "其他"
-                    amount = row.get('金额', row.get('amount', '0'))
-                    start_date_raw = row.get('起始日期', row.get('deposit_date', row.get('存入日期', '')))
-                    maturity_date_raw = row.get('到期日期', row.get('maturity_date', ''))
-                    rate = row.get('利率', row.get('interest_rate', '0'))
-                    interest_type = row.get('计息类型', row.get('interest_type', 'simple')) or "simple"
-                    notes = row.get('备注', row.get('notes', '')) or ""
-                    if user not in self.users:
-                        unknown_users.add(user)
-                    start_date = self.convert_date_format(start_date_raw)
-                    maturity_date = self.convert_date_format(maturity_date_raw)
-                    if not all([bank, deposit_type, user, amount]):
-                        continue
-                    try:
-                        amount = float(amount.replace(',', '')) if isinstance(amount, str) else float(amount)
-                    except ValueError:
-                        continue
-                    rate_value = 0.0
-                    if rate:
+        # 尝试多种编码，不使用 chardet
+        encodings = ['utf-8-sig', 'utf-8', 'gbk', 'latin-1']
+        for enc in encodings:
+            try:
+                with open(filename, 'r', encoding=enc) as f:
+                    has_header = "银行" in f.readline()
+                    f.seek(0)
+                    reader = csv.DictReader(f) if has_header else csv.reader(f)
+                    if not has_header:
+                        fieldnames = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
+                        reader = csv.DictReader(f, fieldnames=fieldnames)
+                    new_deposits = []
+                    unknown_users = set()
+                    for row in reader:
+                        bank = row.get('银行', row.get('bank', '')) or "其他银行"
+                        deposit_type = row.get('存款类型', row.get('deposit_type', row.get('存款名称', ''))) or "其他类型"
+                        user = row.get('持有人', row.get('user', row.get('用户', ''))) or "其他"
+                        amount = row.get('金额', row.get('amount', '0'))
+                        start_date_raw = row.get('起始日期', row.get('deposit_date', row.get('存入日期', '')))
+                        maturity_date_raw = row.get('到期日期', row.get('maturity_date', ''))
+                        rate = row.get('利率', row.get('interest_rate', '0'))
+                        interest_type = row.get('计息类型', row.get('interest_type', 'simple')) or "simple"
+                        notes = row.get('备注', row.get('notes', '')) or ""
+                        if user not in self.users:
+                            unknown_users.add(user)
+                        start_date = self.convert_date_format(start_date_raw)
+                        maturity_date = self.convert_date_format(maturity_date_raw)
+                        if not all([bank, deposit_type, user, amount]):
+                            continue
                         try:
-                            if '%' in rate:
-                                rate = rate.replace('%', '').strip()
-                            rate_value = float(rate) if rate != '' else 0.0
+                            amount = float(amount.replace(',', '')) if isinstance(amount, str) else float(amount)
                         except ValueError:
+                            continue
+                        rate_value = 0.0
+                        if rate:
+                            try:
+                                if '%' in rate:
+                                    rate = rate.replace('%', '').strip()
+                                rate_value = float(rate) if rate != '' else 0.0
+                            except ValueError:
+                                if deposit_type in ["活期", "理财产品", "股票基金"]:
+                                    rate_value = 0.0
+                                else:
+                                    continue
+                        else:
                             if deposit_type in ["活期", "理财产品", "股票基金"]:
                                 rate_value = 0.0
                             else:
                                 continue
-                    else:
-                        if deposit_type in ["活期", "理财产品", "股票基金"]:
-                            rate_value = 0.0
-                        else:
-                            continue
-                    new_deposits.append({
-                        'user': user, 'bank': bank, 'deposit_type': deposit_type,
-                        'amount': amount, 'start_date': start_date, 'maturity_date': maturity_date,
-                        'interest_rate': rate_value, 'interest_type': interest_type, 'notes': notes
-                    })
-                if unknown_users:
-                    return False, f"导入失败：以下用户不存在，请先添加：\n{', '.join(unknown_users)}"
-                cursor = self.conn.cursor()
-                for dep in new_deposits:
-                    cursor.execute("""
-                    INSERT INTO deposits (user_name, bank_name, deposit_name, amount, deposit_date, maturity_date, interest_rate, interest_type, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        dep['user'], dep['bank'], dep['deposit_type'], dep['amount'],
-                        dep.get('start_date', None), dep.get('maturity_date', None),
-                        dep.get('interest_rate', None), dep.get('interest_type', 'simple'), dep.get('notes', '')
-                    ))
-                self.conn.commit()
-                return True, f"成功导入 {len(new_deposits)} 条存款记录"
-        except Exception as e:
-            return False, f"导入存款记录时出错: {str(e)}"
+                        new_deposits.append({
+                            'user': user, 'bank': bank, 'deposit_type': deposit_type,
+                            'amount': amount, 'start_date': start_date, 'maturity_date': maturity_date,
+                            'interest_rate': rate_value, 'interest_type': interest_type, 'notes': notes
+                        })
+                    if unknown_users:
+                        return False, f"导入失败：以下用户不存在，请先添加：\n{', '.join(unknown_users)}"
+                    cursor = self.conn.cursor()
+                    for dep in new_deposits:
+                        cursor.execute("""
+                        INSERT INTO deposits (user_name, bank_name, deposit_name, amount, deposit_date, maturity_date, interest_rate, interest_type, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            dep['user'], dep['bank'], dep['deposit_type'], dep['amount'],
+                            dep.get('start_date', None), dep.get('maturity_date', None),
+                            dep.get('interest_rate', None), dep.get('interest_type', 'simple'), dep.get('notes', '')
+                        ))
+                    self.conn.commit()
+                    return True, f"成功导入 {len(new_deposits)} 条存款记录"
+            except (UnicodeDecodeError, csv.Error):
+                continue  # 尝试下一个编码
+        return False, "无法识别文件编码，请确保文件为 UTF-8 或 GBK 编码"
 
     @staticmethod
     def convert_date_format(date_str):
@@ -561,7 +558,6 @@ class DepositManager:
         return False
 
 # ======================= Flet 手机 APP =======================
-
 def main(page: ft.Page):
     page.title = "家庭存款管理系统"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -572,11 +568,9 @@ def main(page: ft.Page):
 
     manager = DepositManager()
 
-    # 全局状态
     current_user = manager.current_user if manager.current_user else "所有用户"
     deposits = manager.load_deposits()
 
-    # UI 组件引用
     deposit_list = ft.ListView(expand=True, spacing=10, padding=10)
     stats_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
     user_selector = ft.Dropdown(
@@ -586,7 +580,6 @@ def main(page: ft.Page):
         width=200,
     )
 
-    # ---------- 辅助函数 ----------
     def refresh_data():
         nonlocal deposits
         deposits = manager.load_deposits()
@@ -653,7 +646,6 @@ def main(page: ft.Page):
         stats_text.value = f"总本金: {stats['total_amount']:,.2f}元   当前利息: {stats['total_current_interest']:,.2f}元"
         page.update()
 
-    # ---------- 编辑 / 删除 ----------
     def edit_deposit(dep):
         user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=dep['user'])
         bank_input = ft.TextField(label="银行", value=dep['bank'])
@@ -710,7 +702,6 @@ def main(page: ft.Page):
         )
         page.open(confirm_dlg)
 
-    # ---------- 添加存款 ----------
     def add_deposit_dialog(e):
         user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=manager.current_user if manager.current_user else "默认用户")
         bank_input = ft.TextField(label="银行", hint_text="银行名称")
@@ -754,19 +745,16 @@ def main(page: ft.Page):
         )
         page.open(dlg)
 
-    # ---------- 图表统计 ----------
     def show_charts(e):
         stats = manager.get_deposit_stats(None if current_user == "所有用户" else current_user)
         if not stats['by_type'] and not stats['by_bank'] and not stats['by_holder']:
             page.show_snack_bar(ft.SnackBar(content=ft.Text("无数据，无法显示图表")))
             return
 
-        # 移动端字体设置（Android自带字体支持中文）
-        plt.rcParams['font.sans-serif'] = ['Droid Sans Fallback', 'Noto Sans CJK SC', 'SimHei']
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Micro Hei']
         plt.rcParams['axes.unicode_minus'] = False
 
         fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-        # 按类型
         labels = list(stats['by_type'].keys())
         sizes = list(stats['by_type'].values())
         if sizes:
@@ -774,7 +762,6 @@ def main(page: ft.Page):
             axes[0].set_title('存款类型')
         else:
             axes[0].text(0.5, 0.5, '无数据', ha='center', va='center')
-        # 按银行
         labels2 = list(stats['by_bank'].keys())
         sizes2 = list(stats['by_bank'].values())
         if sizes2:
@@ -782,7 +769,6 @@ def main(page: ft.Page):
             axes[1].set_title('银行分布')
         else:
             axes[1].text(0.5, 0.5, '无数据', ha='center', va='center')
-        # 按持有人
         labels3 = list(stats['by_holder'].keys())
         sizes3 = list(stats['by_holder'].values())
         if sizes3:
@@ -807,7 +793,7 @@ def main(page: ft.Page):
         )
         page.open(chart_dlg)
 
-    # ---------- 用户管理 ----------
+    # 用户管理（简化版，但保留核心功能）
     def manage_users(e):
         def refresh_user_list():
             users = manager.users
@@ -865,9 +851,8 @@ def main(page: ft.Page):
                     refresh_user_list()
                     refresh_user_dropdown()
                     page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                    # 修复：删除用户后，如果当前选中的用户被删除了，切换到“所有用户”
-                    nonlocal current_user
                     if current_user == user or (current_user == "所有用户" and user == manager.current_user):
+                        nonlocal current_user
                         current_user = "所有用户"
                         user_selector.value = current_user
                         refresh_data()
@@ -882,7 +867,6 @@ def main(page: ft.Page):
             )
             page.open(confirm_dlg)
 
-        # 构建用户管理对话框
         user_list = ft.Column(spacing=10)
         new_user_input = ft.TextField(label="新用户名", width=200)
         add_user_btn = ft.ElevatedButton("添加用户", on_click=add_user_click)
@@ -911,7 +895,6 @@ def main(page: ft.Page):
             user_selector.value = "所有用户"
         page.update()
 
-    # ---------- 到期提醒 ----------
     def check_maturities(e):
         upcoming = manager.get_upcoming_maturities()
         if upcoming:
@@ -919,12 +902,10 @@ def main(page: ft.Page):
             for dep in upcoming:
                 days_left = (datetime.strptime(dep[5], "%Y-%m-%d") - datetime.now()).days
                 msg += f"用户: {dep[1]}\n银行: {dep[2]}\n名称: {dep[3]}\n金额: {dep[4]:.2f}\n到期日: {dep[5]}\n剩余天数: {days_left}\n\n"
-            dlg = ft.AlertDialog(title=ft.Text("到期提醒"), content=ft.Text(msg), actions=[ft.TextButton("确定", on_click=lambda e: page.close(dlg))])
-            page.open(dlg)
+            page.show_dialog(ft.AlertDialog(title=ft.Text("到期提醒"), content=ft.Text(msg), actions=[ft.TextButton("确定", on_click=lambda e: page.close(dlg))]))
         else:
             page.show_snack_bar(ft.SnackBar(content=ft.Text("未来7天内没有即将到期的存款")))
 
-    # ---------- 导入导出（使用 FilePicker）----------
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
 
@@ -964,7 +945,6 @@ def main(page: ft.Page):
                     page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出失败")))
         file_picker.on_result = on_save
 
-    # ---------- 备份恢复 ----------
     def backup_db(e):
         if not os.path.exists(manager.filename):
             page.show_snack_bar(ft.SnackBar(content=ft.Text("数据库文件不存在")))
@@ -994,7 +974,6 @@ def main(page: ft.Page):
                     page.show_snack_bar(ft.SnackBar(content=ft.Text(f"恢复失败: {ex}")))
         file_picker.on_result = on_result
 
-    # ---------- 用户切换 ----------
     def on_user_change(e):
         nonlocal current_user
         current_user = user_selector.value
@@ -1002,7 +981,6 @@ def main(page: ft.Page):
 
     user_selector.on_change = on_user_change
 
-    # ---------- 顶部按钮栏 ----------
     top_bar = ft.Row([
         user_selector,
         ft.IconButton(icon="add", icon_size=30, on_click=add_deposit_dialog, tooltip="添加存款"),
@@ -1021,7 +999,6 @@ def main(page: ft.Page):
         ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
-    # 主界面布局
     page.add(
         top_bar,
         stats_text,
