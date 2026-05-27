@@ -4,11 +4,6 @@ from datetime import datetime, timedelta
 import re
 import csv
 from collections import defaultdict
-import io
-import base64
-import pandas as pd
-import numpy as np
-import shutil
 import os
 
 # ======================= 预设数据 =======================
@@ -23,7 +18,7 @@ PRESET_DEPOSIT_TYPES = [
     "大额存单", "结构性存款", "通知存款", "理财产品", "股票基金"
 ]
 
-# ======================= 核心业务类 (完整保留) =======================
+# ======================= 核心业务类 (与之前完全相同) =======================
 class DepositManager:
     def __init__(self, filename="deposits.db"):
         self.filename = filename
@@ -307,200 +302,6 @@ class DepositManager:
         """, (today, target_date))
         return cursor.fetchall()
 
-    def export_to_csv(self, filename):
-        try:
-            deposits = self.load_deposits()
-            with open(filename, "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
-                writer.writerow(["序号", "用户", "银行", "存款名称", "金额(元)", "存入日期",
-                                 "到期日期", "利率(%)", "计息类型", "备注", "解锁状态"])
-                for dep in deposits:
-                    amount_str = f"{dep['amount']:,.2f}"
-                    unlocked = "是" if dep['is_unlocked'] else "否"
-                    writer.writerow([
-                        dep['id'], dep['user'], dep['bank'], dep['deposit_type'],
-                        amount_str, dep['start_date'], dep['maturity_date'],
-                        dep['interest_rate'], dep['interest_type'], dep['notes'], unlocked
-                    ])
-            return True
-        except Exception as e:
-            return False
-
-    def export_template(self, filename):
-        try:
-            headers = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-            if filename.endswith('.xlsx') or filename.endswith('.xls'):
-                example_data = [
-                    ["中国工商银行", "一年期定期", "张三", 10000.00, "2025-01-01", "2026-01-01", 1.75, "simple", "示例存款"]
-                ]
-                df = pd.DataFrame(example_data, columns=headers)
-                with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False, sheet_name='存款模板')
-            else:
-                with open(filename, "w", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(headers)
-                    writer.writerow(["中国工商银行", "一年期定期", "张三", "10000.00", "2025-01-01", "2026-01-01", "1.75", "simple", "示例存款"])
-            return True
-        except Exception as e:
-            print(f"导出模板错误: {str(e)}")
-            return False
-
-    def import_from_file(self, filename):
-        try:
-            if filename.lower().endswith(('.xlsx', '.xls')):
-                return self.import_from_excel(filename)
-            else:
-                return self.import_from_csv(filename)
-        except Exception as e:
-            return False, f"导入文件时出错: {str(e)}"
-
-    def import_from_excel(self, filename):
-        try:
-            df = pd.read_excel(filename, sheet_name=0)
-            has_header = any(col in df.columns for col in ["银行", "bank"])
-            if not has_header:
-                df.columns = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-            new_deposits = []
-            unknown_users = set()
-            def get_date(value):
-                if pd.isna(value) or value == "":
-                    return ""
-                if isinstance(value, pd.Timestamp):
-                    return value.strftime("%Y-%m-%d")
-                return str(value).strip()
-            for _, row in df.iterrows():
-                bank = row.get('银行', '') or row.get('bank', '') or "其他银行"
-                deposit_type = row.get('存款类型', '') or row.get('deposit_type', '') or "其他类型"
-                user = row.get('持有人', '') or row.get('user', '') or "其他"
-                amount = row.get('金额', 0) or row.get('amount', 0)
-                start_date_raw = row.get('起始日期', '') or row.get('deposit_date', '') or row.get('存入日期', '')
-                start_date_raw = get_date(start_date_raw)
-                maturity_date_raw = row.get('到期日期', '') or row.get('maturity_date', '')
-                maturity_date_raw = get_date(maturity_date_raw)
-                rate = row.get('利率', 0) or row.get('interest_rate', 0)
-                interest_type = row.get('计息类型', 'simple') or row.get('interest_type', 'simple') or "simple"
-                notes = row.get('备注', '') or row.get('notes', '') or ""
-                if user not in self.users:
-                    unknown_users.add(user)
-                start_date = self.convert_date_format(start_date_raw)
-                maturity_date = self.convert_date_format(maturity_date_raw)
-                if not all([bank, deposit_type, user, amount]):
-                    continue
-                try:
-                    if isinstance(amount, str):
-                        amount = float(amount.replace(',', ''))
-                except ValueError:
-                    continue
-                rate_value = None
-                if rate and str(rate).strip() != '':
-                    try:
-                        rate_str = str(rate).replace('%', '').strip()
-                        rate_value = float(rate_str)
-                    except ValueError:
-                        if deposit_type in ["活期", "理财产品", "股票基金"]:
-                            rate_value = 0.0
-                        else:
-                            continue
-                else:
-                    if deposit_type in ["活期", "理财产品", "股票基金"]:
-                        rate_value = 0.0
-                    else:
-                        continue
-                new_deposits.append({
-                    'user': user, 'bank': bank, 'deposit_type': deposit_type,
-                    'amount': amount, 'start_date': start_date, 'maturity_date': maturity_date,
-                    'interest_rate': rate_value, 'interest_type': interest_type, 'notes': notes
-                })
-            if unknown_users:
-                return False, f"导入失败：以下用户不存在，请先添加：\n{', '.join(unknown_users)}"
-            cursor = self.conn.cursor()
-            for dep in new_deposits:
-                cursor.execute("""
-                INSERT INTO deposits (user_name, bank_name, deposit_name, amount, deposit_date, maturity_date, interest_rate, interest_type, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    dep['user'], dep['bank'], dep['deposit_type'], dep['amount'],
-                    dep.get('start_date', None), dep.get('maturity_date', None),
-                    dep.get('interest_rate', None), dep.get('interest_type', 'simple'), dep.get('notes', '')
-                ))
-            self.conn.commit()
-            return True, f"成功导入 {len(new_deposits)} 条存款记录"
-        except Exception as e:
-            return False, f"导入Excel文件时出错: {str(e)}"
-
-    def import_from_csv(self, filename):
-        encodings = ['utf-8-sig', 'utf-8', 'gbk', 'latin-1']
-        for enc in encodings:
-            try:
-                with open(filename, 'r', encoding=enc) as f:
-                    has_header = "银行" in f.readline()
-                    f.seek(0)
-                    reader = csv.DictReader(f) if has_header else csv.reader(f)
-                    if not has_header:
-                        fieldnames = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-                        reader = csv.DictReader(f, fieldnames=fieldnames)
-                    new_deposits = []
-                    unknown_users = set()
-                    for row in reader:
-                        bank = row.get('银行', row.get('bank', '')) or "其他银行"
-                        deposit_type = row.get('存款类型', row.get('deposit_type', row.get('存款名称', ''))) or "其他类型"
-                        user = row.get('持有人', row.get('user', row.get('用户', ''))) or "其他"
-                        amount = row.get('金额', row.get('amount', '0'))
-                        start_date_raw = row.get('起始日期', row.get('deposit_date', row.get('存入日期', '')))
-                        maturity_date_raw = row.get('到期日期', row.get('maturity_date', ''))
-                        rate = row.get('利率', row.get('interest_rate', '0'))
-                        interest_type = row.get('计息类型', row.get('interest_type', 'simple')) or "simple"
-                        notes = row.get('备注', row.get('notes', '')) or ""
-                        if user not in self.users:
-                            unknown_users.add(user)
-                        start_date = self.convert_date_format(start_date_raw)
-                        maturity_date = self.convert_date_format(maturity_date_raw)
-                        if not all([bank, deposit_type, user, amount]):
-                            continue
-                        try:
-                            amount = float(amount.replace(',', '')) if isinstance(amount, str) else float(amount)
-                        except ValueError:
-                            continue
-                        rate_value = 0.0
-                        if rate:
-                            try:
-                                if '%' in rate:
-                                    rate = rate.replace('%', '').strip()
-                                rate_value = float(rate) if rate != '' else 0.0
-                            except ValueError:
-                                if deposit_type in ["活期", "理财产品", "股票基金"]:
-                                    rate_value = 0.0
-                                else:
-                                    continue
-                        else:
-                            if deposit_type in ["活期", "理财产品", "股票基金"]:
-                                rate_value = 0.0
-                            else:
-                                continue
-                        new_deposits.append({
-                            'user': user, 'bank': bank, 'deposit_type': deposit_type,
-                            'amount': amount, 'start_date': start_date, 'maturity_date': maturity_date,
-                            'interest_rate': rate_value, 'interest_type': interest_type, 'notes': notes
-                        })
-                    if unknown_users:
-                        return False, f"导入失败：以下用户不存在，请先添加：\n{', '.join(unknown_users)}"
-                    cursor = self.conn.cursor()
-                    for dep in new_deposits:
-                        cursor.execute("""
-                        INSERT INTO deposits (user_name, bank_name, deposit_name, amount, deposit_date, maturity_date, interest_rate, interest_type, notes)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            dep['user'], dep['bank'], dep['deposit_type'], dep['amount'],
-                            dep.get('start_date', None), dep.get('maturity_date', None),
-                            dep.get('interest_rate', None), dep.get('interest_type', 'simple'), dep.get('notes', '')
-                        ))
-                    self.conn.commit()
-                    return True, f"成功导入 {len(new_deposits)} 条存款记录"
-            except (UnicodeDecodeError, csv.Error):
-                continue
-        return False, "无法识别文件编码，请确保文件为 UTF-8 或 GBK 编码"
-
     @staticmethod
     def convert_date_format(date_str):
         if not date_str or date_str.strip() == "":
@@ -538,7 +339,7 @@ class DepositManager:
                 continue
         return False
 
-# ======================= Flet UI 部分 (无 matplotlib 依赖) =======================
+# ======================= Flet UI 部分 (无 FilePicker，无 matplotlib) =======================
 def main(page: ft.Page):
     page.title = "家庭存款管理系统"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -727,7 +528,6 @@ def main(page: ft.Page):
         page.open(dlg)
 
     def show_charts(e):
-        # 图表功能因 matplotlib 打包问题暂时不可用，提示用户
         page.show_snack_bar(ft.SnackBar(content=ft.Text("图表功能暂不可用，将在后续版本添加")))
 
     def manage_users(e):
@@ -842,74 +642,6 @@ def main(page: ft.Page):
         else:
             page.show_snack_bar(ft.SnackBar(content=ft.Text("未来7天内没有即将到期的存款")))
 
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-
-    def import_data(e):
-        file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["csv", "xlsx"])
-        def on_result(result: ft.FilePickerResultEvent):
-            if result.files:
-                path = result.files[0].path
-                success, msg = manager.import_from_file(path)
-                if success:
-                    refresh_data()
-                    refresh_user_dropdown()
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(f"导入失败: {msg}")))
-        file_picker.on_result = on_result
-
-    def export_data(e):
-        file_picker.save_file(file_name="存款记录.csv", allowed_extensions=["csv"])
-        def on_save(result: ft.FilePickerResultEvent):
-            if result.path:
-                success = manager.export_to_csv(result.path)
-                if success:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("导出成功")))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("导出失败")))
-        file_picker.on_result = on_save
-
-    def export_template(e):
-        file_picker.save_file(file_name="存款导入模板.xlsx", allowed_extensions=["xlsx"])
-        def on_save(result: ft.FilePickerResultEvent):
-            if result.path:
-                success = manager.export_template(result.path)
-                if success:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出成功")))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出失败")))
-        file_picker.on_result = on_save
-
-    def backup_db(e):
-        if not os.path.exists(manager.filename):
-            page.show_snack_bar(ft.SnackBar(content=ft.Text("数据库文件不存在")))
-            return
-        file_picker.save_file(file_name=f"deposits_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db", allowed_extensions=["db"])
-        def on_save(result: ft.FilePickerResultEvent):
-            if result.path:
-                shutil.copy2(manager.filename, result.path)
-                page.show_snack_bar(ft.SnackBar(content=ft.Text("备份成功")))
-        file_picker.on_result = on_save
-
-    def restore_db(e):
-        file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["db"])
-        def on_result(result: ft.FilePickerResultEvent):
-            if result.files:
-                path = result.files[0].path
-                try:
-                    manager.conn.close()
-                    shutil.copy2(path, manager.filename)
-                    manager.conn = sqlite3.connect(manager.filename)
-                    manager.users = manager.load_users()
-                    manager.current_user = manager.users[0] if manager.users else "默认用户"
-                    refresh_data()
-                    refresh_user_dropdown()
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("恢复成功")))
-                except Exception as ex:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(f"恢复失败: {ex}")))
-        file_picker.on_result = on_result
-
     def on_user_change(e):
         nonlocal current_user
         current_user = user_selector.value
@@ -917,6 +649,7 @@ def main(page: ft.Page):
 
     user_selector.on_change = on_user_change
 
+    # 顶部按钮栏（移除了导入导出备份恢复等需要 FilePicker 的功能）
     top_bar = ft.Row([
         user_selector,
         ft.IconButton(icon="add", icon_size=30, on_click=add_deposit_dialog, tooltip="添加存款"),
@@ -926,11 +659,12 @@ def main(page: ft.Page):
             items=[
                 ft.PopupMenuItem(text="用户管理", on_click=manage_users),
                 ft.PopupMenuItem(text="到期提醒", on_click=check_maturities),
-                ft.PopupMenuItem(text="导入数据", on_click=import_data),
-                ft.PopupMenuItem(text="导出数据", on_click=export_data),
-                ft.PopupMenuItem(text="导出模板", on_click=export_template),
-                ft.PopupMenuItem(text="备份数据库", on_click=backup_db),
-                ft.PopupMenuItem(text="恢复数据库", on_click=restore_db),
+                # 以下功能依赖 FilePicker，先注释掉
+                # ft.PopupMenuItem(text="导入数据", on_click=import_data),
+                # ft.PopupMenuItem(text="导出数据", on_click=export_data),
+                # ft.PopupMenuItem(text="导出模板", on_click=export_template),
+                # ft.PopupMenuItem(text="备份数据库", on_click=backup_db),
+                # ft.PopupMenuItem(text="恢复数据库", on_click=restore_db),
             ]
         ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
