@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import re
 import csv
 from collections import defaultdict
-import matplotlib.pyplot as plt
 import io
 import base64
 import pandas as pd
@@ -24,7 +23,7 @@ PRESET_DEPOSIT_TYPES = [
     "大额存单", "结构性存款", "通知存款", "理财产品", "股票基金"
 ]
 
-# ======================= 核心业务类 (未修改) =======================
+# ======================= 核心业务类 (完整保留) =======================
 class DepositManager:
     def __init__(self, filename="deposits.db"):
         self.filename = filename
@@ -431,7 +430,6 @@ class DepositManager:
             return False, f"导入Excel文件时出错: {str(e)}"
 
     def import_from_csv(self, filename):
-        # 尝试多种编码，不使用 chardet
         encodings = ['utf-8-sig', 'utf-8', 'gbk', 'latin-1']
         for enc in encodings:
             try:
@@ -500,7 +498,7 @@ class DepositManager:
                     self.conn.commit()
                     return True, f"成功导入 {len(new_deposits)} 条存款记录"
             except (UnicodeDecodeError, csv.Error):
-                continue  # 尝试下一个编码
+                continue
         return False, "无法识别文件编码，请确保文件为 UTF-8 或 GBK 编码"
 
     @staticmethod
@@ -540,7 +538,7 @@ class DepositManager:
                 continue
         return False
 
-# ======================= Flet UI 部分 (已修复 nonlocal 错误) =======================
+# ======================= Flet UI 部分 (无 matplotlib 依赖) =======================
 def main(page: ft.Page):
     page.title = "家庭存款管理系统"
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -551,11 +549,9 @@ def main(page: ft.Page):
 
     manager = DepositManager()
 
-    # 全局状态
     current_user = manager.current_user if manager.current_user else "所有用户"
     deposits = manager.load_deposits()
 
-    # UI 组件
     deposit_list = ft.ListView(expand=True, spacing=10, padding=10)
     stats_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
     user_selector = ft.Dropdown(
@@ -565,7 +561,6 @@ def main(page: ft.Page):
         width=200,
     )
 
-    # ---------- 辅助函数 ----------
     def refresh_data():
         nonlocal deposits
         deposits = manager.load_deposits()
@@ -632,7 +627,6 @@ def main(page: ft.Page):
         stats_text.value = f"总本金: {stats['total_amount']:,.2f}元   当前利息: {stats['total_current_interest']:,.2f}元"
         page.update()
 
-    # ---------- 编辑 / 删除 ----------
     def edit_deposit(dep):
         user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=dep['user'])
         bank_input = ft.TextField(label="银行", value=dep['bank'])
@@ -689,7 +683,6 @@ def main(page: ft.Page):
         )
         page.open(confirm_dlg)
 
-    # ---------- 添加存款 ----------
     def add_deposit_dialog(e):
         user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=manager.current_user if manager.current_user else "默认用户")
         bank_input = ft.TextField(label="银行", hint_text="银行名称")
@@ -733,59 +726,10 @@ def main(page: ft.Page):
         )
         page.open(dlg)
 
-    # ---------- 图表统计 ----------
     def show_charts(e):
-        stats = manager.get_deposit_stats(None if current_user == "所有用户" else current_user)
-        if not stats['by_type'] and not stats['by_bank'] and not stats['by_holder']:
-            page.show_snack_bar(ft.SnackBar(content=ft.Text("无数据，无法显示图表")))
-            return
+        # 图表功能因 matplotlib 打包问题暂时不可用，提示用户
+        page.show_snack_bar(ft.SnackBar(content=ft.Text("图表功能暂不可用，将在后续版本添加")))
 
-        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Micro Hei']
-        plt.rcParams['axes.unicode_minus'] = False
-
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-        # 按类型
-        labels = list(stats['by_type'].keys())
-        sizes = list(stats['by_type'].values())
-        if sizes:
-            axes[0].pie(sizes, labels=labels, autopct='%1.1f%%')
-            axes[0].set_title('存款类型')
-        else:
-            axes[0].text(0.5, 0.5, '无数据', ha='center', va='center')
-        # 按银行
-        labels2 = list(stats['by_bank'].keys())
-        sizes2 = list(stats['by_bank'].values())
-        if sizes2:
-            axes[1].pie(sizes2, labels=labels2, autopct='%1.1f%%')
-            axes[1].set_title('银行分布')
-        else:
-            axes[1].text(0.5, 0.5, '无数据', ha='center', va='center')
-        # 按持有人
-        labels3 = list(stats['by_holder'].keys())
-        sizes3 = list(stats['by_holder'].values())
-        if sizes3:
-            axes[2].pie(sizes3, labels=labels3, autopct='%1.1f%%')
-            axes[2].set_title('持有人')
-        else:
-            axes[2].text(0.5, 0.5, '无数据', ha='center', va='center')
-
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        img_data = base64.b64encode(buf.read()).decode()
-        buf.close()
-        plt.close()
-
-        img = ft.Image(src_base64=img_data, width=page.width-40, fit=ft.ImageFit.CONTAIN)
-        chart_dlg = ft.AlertDialog(
-            title=ft.Text("存款图表"),
-            content=ft.Container(content=img, width=400, height=400),
-            actions=[ft.TextButton("关闭", on_click=lambda e: page.close(chart_dlg))],
-        )
-        page.open(chart_dlg)
-
-    # ---------- 用户管理 (已修复 nonlocal 错误) ----------
     def manage_users(e):
         def refresh_user_list():
             users = manager.users
@@ -838,7 +782,7 @@ def main(page: ft.Page):
 
         def delete_user(user):
             def confirm(e):
-                nonlocal current_user  # <--- 关键修复：nonlocal 放在第一行
+                nonlocal current_user
                 success, msg = manager.delete_user(user)
                 if success:
                     refresh_user_list()
@@ -887,7 +831,6 @@ def main(page: ft.Page):
             user_selector.value = "所有用户"
         page.update()
 
-    # ---------- 到期提醒 ----------
     def check_maturities(e):
         upcoming = manager.get_upcoming_maturities()
         if upcoming:
@@ -899,7 +842,6 @@ def main(page: ft.Page):
         else:
             page.show_snack_bar(ft.SnackBar(content=ft.Text("未来7天内没有即将到期的存款")))
 
-    # ---------- 导入导出（使用 FilePicker）----------
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
 
@@ -939,7 +881,6 @@ def main(page: ft.Page):
                     page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出失败")))
         file_picker.on_result = on_save
 
-    # ---------- 备份恢复 ----------
     def backup_db(e):
         if not os.path.exists(manager.filename):
             page.show_snack_bar(ft.SnackBar(content=ft.Text("数据库文件不存在")))
@@ -969,7 +910,6 @@ def main(page: ft.Page):
                     page.show_snack_bar(ft.SnackBar(content=ft.Text(f"恢复失败: {ex}")))
         file_picker.on_result = on_result
 
-    # ---------- 用户切换 ----------
     def on_user_change(e):
         nonlocal current_user
         current_user = user_selector.value
@@ -977,7 +917,6 @@ def main(page: ft.Page):
 
     user_selector.on_change = on_user_change
 
-    # ---------- 顶部按钮栏 ----------
     top_bar = ft.Row([
         user_selector,
         ft.IconButton(icon="add", icon_size=30, on_click=add_deposit_dialog, tooltip="添加存款"),
@@ -996,7 +935,6 @@ def main(page: ft.Page):
         ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
-    # 主界面
     page.add(
         top_bar,
         stats_text,
@@ -1005,7 +943,6 @@ def main(page: ft.Page):
     )
 
     refresh_data()
-
 
 if __name__ == "__main__":
     ft.app(target=main)
