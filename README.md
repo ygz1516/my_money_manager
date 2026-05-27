@@ -25,15 +25,10 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install flet
-          pip install matplotlib
-          pip install pandas
-          pip install openpyxl
-          pip install chardet
-          pip install numpy
+          pip install -r requirements.txt
 
       - name: Build APK
-        run: flet build apk --module-name deposit_app_flet
+        run: flet build apk --module-name deposit_app_flet --requirements requirements.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
