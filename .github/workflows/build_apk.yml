@@ -15,8 +15,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install flet matplotlib pandas openpyxl chardet
+      - name: Install Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install flet matplotlib pandas openpyxl chardet
 
       - name: Build APK
         run: flet build apk --module-name deposit_app_flet
