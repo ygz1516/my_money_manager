@@ -1,9 +1,0 @@
-[tool.flet]
-app_name = "存款管理系统"
-app_description = "家庭存款管理工具"
-app_version = "1.0.0"
-icon = "icon.png"   # 可选，需要准备一个 512x512 的 PNG 图标放在同目录
-android_permissions = [
-    "android.permission.READ_EXTERNAL_STORAGE",
-    "android.permission.WRITE_EXTERNAL_STORAGE"
-]
