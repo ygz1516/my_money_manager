@@ -20,11 +20,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install flet
+          pip install --upgrade flet
 
       - name: Build APK with Flet
         run: |
-          flet build apk --verbose --module-name main
+          flet build apk main.py --verbose
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
