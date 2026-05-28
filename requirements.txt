@@ -1,6 +1,0 @@
-flet
-pandas
-numpy
-matplotlib
-openpyxl
-chardet
