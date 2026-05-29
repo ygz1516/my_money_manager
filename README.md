@@ -16,18 +16,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Flutter dependencies (accept licenses)
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y curl git unzip xz-utils zip libglu1-mesa
+
+      - name: Install Flutter (for license acceptance)
+        run: |
           git clone https://github.com/flutter/flutter.git --depth 1 -b stable
           echo "$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_PATH
-        shell: bash
 
       - name: Accept Android licenses
         run: |
           yes | flutter doctor --android-licenses || true
-        shell: bash
 
       - name: Install Python dependencies
         run: |
@@ -35,13 +36,9 @@ jobs:
           pip install -r requirements.txt
           pip install --upgrade flet
 
-      - name: Prepare entry point
+      - name: Build APK
         run: |
-          cp main.py deposit_app_flet.py
-
-      - name: Build APK with Flet
-        run: |
-          flet build apk --verbose
+          flet build apk main.py --verbose
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
