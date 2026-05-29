@@ -37,7 +37,15 @@ jobs:
           pip install --upgrade flet
 
       - name: Build APK (non-interactive)
-        run: |
-          yes | flet build apk main.py --verbose --yes
         env:
           FLET_YES: 1
+          FLUTTER_ROOT: ${{ github.workspace }}/flutter
+        run: |
+          export PATH="$FLUTTER_ROOT/bin:$PATH"
+          echo "y" | flet build apk main.py --verbose
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deposit-app-apk
+          path: build/apk/*.apk
