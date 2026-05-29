@@ -38,7 +38,7 @@ jobs:
 
       - name: Build APK
         run: |
-          flet build apk main.py --verbose
+          yes | flet build apk main.py --verbose
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
