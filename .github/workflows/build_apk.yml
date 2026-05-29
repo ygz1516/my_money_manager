@@ -2,7 +2,8 @@ name: Build Flet APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -10,28 +11,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
-      - name: Install Flutter SDK
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.41.7'
-          channel: 'stable'
-          cache: true
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl git unzip xz-utils zip libglu1-mesa
+
+      - name: Install Flutter (for license acceptance)
+        run: |
+          git clone https://github.com/flutter/flutter.git --depth 1 -b stable
+          echo "$GITHUB_WORKSPACE/flutter/bin" >> $GITHUB_PATH
+
+      - name: Accept Android licenses
+        run: |
+          yes | flutter doctor --android-licenses || true
 
       - name: Install Python dependencies
         run: |
-          pip install --upgrade pip
-          pip install flet matplotlib pandas openpyxl chardet
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install --upgrade flet
 
       - name: Build APK
-        run: flet build apk --module-name deposit_app_flet
+        run: |
+          flet build apk main.py --verbose
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: deposit-app
+          name: deposit-app-apk
           path: build/apk/*.apk
