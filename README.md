@@ -36,9 +36,11 @@ jobs:
           pip install -r requirements.txt
           pip install --upgrade flet
 
-      - name: Build APK
+      - name: Build APK (non-interactive)
+        env:
+          FLET_YES: 1
         run: |
-          yes | flet build apk main.py --verbose
+          flet build apk main.py --verbose
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
