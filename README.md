@@ -17,10 +17,12 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Build with Buildozer
-      uses: ArtemSBulgakov/buildozer-action@v1
+      uses: michaelkrukov/buildozer-action@v1
       with:
         command: buildozer android debug
         buildozer_spec_path: buildozer.spec
+        workdir: .
+        python_version: 3.11
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
