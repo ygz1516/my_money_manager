@@ -1,6 +1,6 @@
-flet
-pandas
-numpy
+kivy==2.3.0
 matplotlib
+pandas
 openpyxl
 chardet
+numpy

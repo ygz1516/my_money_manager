@@ -350,123 +350,7 @@ class DepositManager:
         return None
 
 
-# Kivy 界面定义 (KV 语言 - 简化版，实际使用 .kv 文件)
-KV_CODE = '''
-<DepositItem@BoxLayout>:
-    orientation: 'horizontal'
-    size_hint_y: None
-    height: dp(50)
-    Label:
-        text: root.bank
-        size_hint_x: 0.15
-    Label:
-        text: root.deposit_type
-        size_hint_x: 0.15
-    Label:
-        text: root.holder
-        size_hint_x: 0.1
-    Label:
-        text: root.amount
-        size_hint_x: 0.15
-    Label:
-        text: root.maturity_date
-        size_hint_x: 0.15
-    Label:
-        text: root.current_interest
-        size_hint_x: 0.15
-
-<DepositListView@ScrollView>:
-    BoxLayout:
-        orientation: 'vertical'
-        size_hint_y: None
-        height: self.minimum_height
-        id: deposit_container
-
-<MainScreen>:
-    BoxLayout:
-        orientation: 'vertical'
-        padding: dp(10)
-        spacing: dp(5)
-        
-        BoxLayout:
-            size_hint_y: None
-            height: dp(48)
-            spacing: dp(5)
-            Label:
-                text: '存款管理系统'
-                font_size: '20sp'
-                bold: True
-            Button:
-                text: '添加'
-                size_hint_x: None
-                width: dp(60)
-                on_release: root.show_add_dialog()
-            Button:
-                text: '统计'
-                size_hint_x: None
-                width: dp(60)
-                on_release: root.show_stats()
-            Button:
-                text: '到期提醒'
-                size_hint_x: None
-                width: dp(80)
-                on_release: root.check_maturities()
-        
-        BoxLayout:
-            size_hint_y: None
-            height: dp(48)
-            spacing: dp(5)
-            Spinner:
-                id: user_spinner
-                text: root.current_user_text
-                values: root.user_list
-                size_hint_x: 0.3
-                on_text: root.change_user(self.text)
-            TextInput:
-                id: search_input
-                hint_text: '搜索银行/类型/持有人'
-                size_hint_x: 0.7
-                on_text: root.search_filter(self.text)
-        
-        BoxLayout:
-            size_hint_y: None
-            height: dp(40)
-            Label:
-                text: '银行'
-                bold: True
-                size_hint_x: 0.15
-            Label:
-                text: '类型'
-                bold: True
-                size_hint_x: 0.15
-            Label:
-                text: '持有人'
-                bold: True
-                size_hint_x: 0.1
-            Label:
-                text: '金额(元)'
-                bold: True
-                size_hint_x: 0.15
-            Label:
-                text: '到期日期'
-                bold: True
-                size_hint_x: 0.15
-            Label:
-                text: '当前利息'
-                bold: True
-                size_hint_x: 0.15
-        
-        DepositListView:
-            id: deposit_list
-        
-        Label:
-            id: status_label
-            text: ''
-            size_hint_y: None
-            height: dp(30)
-'''
-
-
+# Kivy 界面定义 (KV 语言内容在 deposit.kv 文件中，但这里需要加载)
 class DepositItem(BoxLayout):
     bank = StringProperty('')
     deposit_type = StringProperty('')
@@ -675,7 +559,7 @@ class MainScreen(Screen):
 
     def __init__(self, app, **kwargs):
         super().__init__(**kwargs)
-        self.app = app
+        self.app = app                       # 关键修复
         self.all_deposits = []
         self.filtered_deposits = []
         self._update_user_list()

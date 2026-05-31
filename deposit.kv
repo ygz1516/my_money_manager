@@ -1,0 +1,247 @@
+#:kivy 1.11.0
+
+<DepositItem@BoxLayout>:
+    orientation: 'horizontal'
+    size_hint_y: None
+    height: dp(50)
+    canvas.before:
+        Color:
+            rgba: (0.9, 0.9, 0.9, 1) if root.index % 2 == 0 else (1, 1, 1, 1)
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    Label:
+        text: root.bank
+        size_hint_x: 0.15
+        text_size: self.size
+        valign: 'middle'
+        halign: 'center'
+    Label:
+        text: root.deposit_type
+        size_hint_x: 0.15
+        text_size: self.size
+        valign: 'middle'
+        halign: 'center'
+    Label:
+        text: root.holder
+        size_hint_x: 0.1
+        text_size: self.size
+        valign: 'middle'
+        halign: 'center'
+    Label:
+        text: root.amount
+        size_hint_x: 0.15
+        text_size: self.size
+        valign: 'middle'
+        halign: 'right'
+    Label:
+        text: root.maturity_date
+        size_hint_x: 0.15
+        text_size: self.size
+        valign: 'middle'
+        halign: 'center'
+    Label:
+        text: root.current_interest
+        size_hint_x: 0.15
+        text_size: self.size
+        valign: 'middle'
+        halign: 'right'
+
+<DepositListView@ScrollView>:
+    BoxLayout:
+        orientation: 'vertical'
+        size_hint_y: None
+        height: self.minimum_height
+        id: deposit_container
+
+<MainScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(10)
+        spacing: dp(8)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(50)
+            spacing: dp(8)
+            Label:
+                text: '📊 存款管理系统'
+                font_size: '22sp'
+                bold: True
+                size_hint_x: 0.5
+            Button:
+                text: '➕ 添加'
+                size_hint_x: None
+                width: dp(70)
+                background_normal: ''
+                background_color: (0.2, 0.6, 0.2, 1)
+                on_release: root.show_add_dialog()
+            Button:
+                text: '📈 统计'
+                size_hint_x: None
+                width: dp(60)
+                on_release: root.show_stats()
+            Button:
+                text: '🔔 到期'
+                size_hint_x: None
+                width: dp(70)
+                on_release: root.check_maturities()
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(45)
+            spacing: dp(8)
+            Spinner:
+                id: user_spinner
+                text: root.current_user_text
+                values: root.user_list
+                size_hint_x: 0.35
+                background_normal: ''
+                background_color: (0.3, 0.5, 0.7, 1)
+                on_text: root.change_user(self.text)
+            TextInput:
+                id: search_input
+                hint_text: '🔍 搜索...'
+                size_hint_x: 0.65
+                background_color: (1, 1, 1, 1)
+                on_text: root.search_filter(self.text)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(35)
+            canvas.before:
+                Color:
+                    rgba: (0.2, 0.4, 0.6, 1)
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: '银行'
+                bold: True
+                color: (1, 1, 1, 1)
+                size_hint_x: 0.15
+            Label:
+                text: '类型'
+                bold: True
+                color: (1, 1, 1, 1)
+                size_hint_x: 0.15
+            Label:
+                text: '持有人'
+                bold: True
+                color: (1, 1, 1, 1)
+                size_hint_x: 0.1
+            Label:
+                text: '金额(元)'
+                bold: True
+                color: (1, 1, 1, 1)
+                size_hint_x: 0.15
+            Label:
+                text: '到期日期'
+                bold: True
+                color: (1, 1, 1, 1)
+                size_hint_x: 0.15
+            Label:
+                text: '当前利息'
+                bold: True
+                color: (1, 1, 1, 1)
+                size_hint_x: 0.15
+
+        DepositListView:
+            id: deposit_list
+
+        Label:
+            id: status_label
+            text: ''
+            size_hint_y: None
+            height: dp(30)
+            color: (0.3, 0.3, 0.3, 1)
+
+<AddDepositPopup>:
+    title: '添加存款'
+    size_hint: (0.9, 0.85)
+    auto_dismiss: False
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(15)
+        spacing: dp(8)
+        ScrollView:
+            GridLayout:
+                cols: 2
+                spacing: dp(8)
+                size_hint_y: None
+                height: self.minimum_height
+                row_force_default: True
+                row_default_height: dp(55)
+                Label:
+                    text: '持有人:'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: user_input
+                    size_hint_x: 0.7
+                Label:
+                    text: '银行:'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: bank_input
+                    size_hint_x: 0.7
+                Label:
+                    text: '存款类型:'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: type_input
+                    size_hint_x: 0.7
+                Label:
+                    text: '金额(元):'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: amount_input
+                    size_hint_x: 0.7
+                    input_filter: 'float'
+                Label:
+                    text: '起始日期:'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: start_date_input
+                    size_hint_x: 0.7
+                    hint_text: 'YYYY-MM-DD'
+                Label:
+                    text: '到期日期:'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: maturity_date_input
+                    size_hint_x: 0.7
+                    hint_text: 'YYYY-MM-DD'
+                Label:
+                    text: '利率(%):'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: rate_input
+                    size_hint_x: 0.7
+                    input_filter: 'float'
+                Label:
+                    text: '计息类型:'
+                    size_hint_x: 0.3
+                Spinner:
+                    id: interest_type_spinner
+                    text: 'simple'
+                    values: ['simple', 'compound']
+                    size_hint_x: 0.7
+                Label:
+                    text: '备注:'
+                    size_hint_x: 0.3
+                TextInput:
+                    id: notes_input
+                    size_hint_x: 0.7
+                    multiline: False
+        BoxLayout:
+            size_hint_y: None
+            height: dp(50)
+            spacing: dp(10)
+            Button:
+                text: '保存'
+                background_normal: ''
+                background_color: (0.2, 0.6, 0.2, 1)
+                on_release: root.save()
+            Button:
+                text: '取消'
+                on_release: root.dismiss()

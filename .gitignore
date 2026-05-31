@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Kivy / Android build outputs
+bin/
+build/
+*.apk
+*.aab
+
+# Database (optional, if you want to keep local db but not in git)
+*.db
+*.sqlite3
+
+# MacOS
+.DS_Store
+
+# PyCharm project files
+.idea/
+*.iml
