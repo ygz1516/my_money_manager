@@ -13,7 +13,7 @@ jobs:
         arch: [arm64-v8a, armeabi-v7a]
 
     steps:
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up Python
@@ -26,17 +26,13 @@ jobs:
         sudo apt update
         sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
-    - name: Install buildozer and dependencies
+    - name: Install buildozer and cython
       run: |
         pip install --upgrade pip
         pip install buildozer cython
-        # 验证安装
-        buildozer --version
 
     - name: Build APK with buildozer
       run: |
-        # 如果需要针对特定架构，可以设置环境变量
-        export ARCH=${{ matrix.arch }}
         buildozer android debug
 
     - name: Upload APK
