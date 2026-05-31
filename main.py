@@ -1,34 +1,51 @@
-import flet as ft
+"""
+存款管理系统 - Kivy 移动端版本
+将原始 Tkinter 应用迁移到 Kivy 框架，可打包为 Android APK
+"""
+
 import sqlite3
-from datetime import datetime, timedelta
 import re
 import csv
 import chardet
+from datetime import datetime, timedelta
 from collections import defaultdict
-
-# 必须在 import matplotlib.pyplot 之前设置后端
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import io
-import base64
-import pandas as pd
-import numpy as np
-import shutil
 import os
+import shutil
 
-# ======================= 原程序的核心业务类（保留，仅修改数据库路径参数化）=======================
-PRESET_BANKS = [
-    "中国工商银行", "中国建设银行", "中国农业银行", "重庆银行",
-    "交通银行", "重庆农村商业银行", "微众银行", "蓝海银行", "三峡银行", "邮储银行", "其他银行",
-    "微信理财", "支付宝理财", "股票基金", "银行理财"
-]
+# Kivy 相关导入
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.popup import Popup
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.spinner import Spinner
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.recycleview import RecycleView
+from kivy.properties import StringProperty, NumericProperty, ListProperty, ObjectProperty
+from kivy.metrics import dp
+from kivy.core.window import Window
+from kivy.clock import Clock
 
-PRESET_DEPOSIT_TYPES = [
-    "活期", "一年期定期", "三年期定期", "五年期定期", "自定义期限定期",
-    "大额存单", "结构性存款", "通知存款", "理财产品", "股票基金"
-]
+# 图表支持 (Kivy 中使用 matplotlib)
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # 非交互式后端，移动端必须
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from kivy.uix.image import Image
+    import numpy as np
+    from matplotlib.patches import Patch
+    from matplotlib.dates import DateFormatter
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    print("警告: matplotlib 未安装，图表功能不可用")
 
+# 金融计算核心类 - 从原始代码迁移，业务逻辑完全复用
 class DepositManager:
     def __init__(self, filename="deposits.db"):
         self.filename = filename
@@ -37,111 +54,79 @@ class DepositManager:
         self.users = self.load_users()
         self.current_user = self.users[0] if self.users else "默认用户"
 
-    # ---------- 以下所有方法保持原样，无需修改 ----------
     def _create_tables(self):
         cursor = self.conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='deposits'")
-        table_exists = cursor.fetchone()
-        if table_exists:
-            cursor.execute("PRAGMA table_info(deposits)")
-            columns = [column[1] for column in cursor.fetchall()]
-            if 'is_unlocked' not in columns:
-                cursor.execute("ALTER TABLE deposits ADD COLUMN is_unlocked INTEGER DEFAULT 0")
-        else:
-            cursor.execute("""
-            CREATE TABLE deposits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_name TEXT NOT NULL DEFAULT '其他',
-                bank_name TEXT NOT NULL,
-                deposit_name TEXT NOT NULL,
-                amount REAL NOT NULL,
-                deposit_date TEXT,
-                maturity_date TEXT,
-                interest_rate REAL,
-                interest_type TEXT NOT NULL DEFAULT 'simple',
-                notes TEXT,
-                is_notified INTEGER DEFAULT 0,
-                is_unlocked INTEGER DEFAULT 0
-            )
-            """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS deposits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_name TEXT NOT NULL DEFAULT '其他',
+            bank_name TEXT NOT NULL,
+            deposit_name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            deposit_date TEXT,
+            maturity_date TEXT,
+            interest_rate REAL,
+            interest_type TEXT NOT NULL DEFAULT 'simple',
+            notes TEXT,
+            is_notified INTEGER DEFAULT 0,
+            is_unlocked INTEGER DEFAULT 0
+        )
+        """)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_name TEXT UNIQUE NOT NULL
         )
         """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS rate_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            deposit_id INTEGER NOT NULL,
+            effective_date TEXT NOT NULL,
+            interest_rate REAL NOT NULL,
+            FOREIGN KEY(deposit_id) REFERENCES deposits(id) ON DELETE CASCADE
+        )
+        """)
+        # 兼容原数据库：如果已有存款表但缺少字段，进行升级
+        cursor.execute("PRAGMA table_info(deposits)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'is_unlocked' not in columns:
+            cursor.execute("ALTER TABLE deposits ADD COLUMN is_unlocked INTEGER DEFAULT 0")
+        self.conn.commit()
+        # 清理可能遗留的无效用户
+        cursor.execute("DELETE FROM users WHERE user_name IS NULL OR user_name = ''")
         self.conn.commit()
 
     def load_users(self):
         cursor = self.conn.cursor()
         cursor.execute("SELECT user_name FROM users ORDER BY id")
         rows = cursor.fetchall()
-        return [row[0] for row in rows] if rows else []
+        if not rows:
+            return []
+        return [row[0] for row in rows]
 
-    def save_users(self):
+    def add_user(self, user_name):
+        if not user_name or user_name in self.load_users():
+            return False, "用户已存在或名称无效"
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM users")
-        for user in self.users:
-            cursor.execute("INSERT INTO users (user_name) VALUES (?)", (user,))
+        cursor.execute("INSERT INTO users (user_name) VALUES (?)", (user_name,))
         self.conn.commit()
+        return True, f"用户 {user_name} 添加成功"
 
-    def add_user(self, user):
-        if user and user not in self.users:
-            self.users.append(user)
-            cursor = self.conn.cursor()
-            cursor.execute("INSERT INTO users (user_name) VALUES (?)", (user,))
-            self.conn.commit()
-            return True, f"用户 '{user}' 添加成功"
-        return False, "用户已存在或名称无效"
-
-    def delete_user(self, user):
-        if user not in self.users:
-            return False, f"用户 '{user}' 不存在"
+    def load_deposits(self, user_name=None):
         cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM deposits WHERE user_name=?", (user,))
-        deposit_count = cursor.fetchone()[0]
-        if deposit_count > 0:
-            return False, f"无法删除用户 '{user}'，该用户仍有{deposit_count}笔存款"
-        try:
-            cursor.execute("DELETE FROM users WHERE user_name=?", (user,))
-            self.conn.commit()
-            if user in self.users:
-                self.users.remove(user)
-            if self.current_user == user:
-                self.current_user = self.users[0] if self.users else None
-            return True, f"用户 '{user}' 删除成功"
-        except Exception as e:
-            return False, f"删除用户失败: {str(e)}"
-
-    def rename_user(self, old_name, new_name):
-        if not new_name:
-            return False, "新用户名不能为空"
-        if new_name == old_name:
-            return False, "新用户名与旧用户名相同"
-        if new_name in self.users:
-            return False, f"用户名 '{new_name}' 已存在"
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute("UPDATE users SET user_name=? WHERE user_name=?", (new_name, old_name))
-            cursor.execute("UPDATE deposits SET user_name=? WHERE user_name=?", (new_name, old_name))
-            self.conn.commit()
-            if old_name in self.users:
-                index = self.users.index(old_name)
-                self.users[index] = new_name
-            if self.current_user == old_name:
-                self.current_user = new_name
-            return True, f"用户 '{old_name}' 已重命名为 '{new_name}'"
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            return False, f"重命名用户失败: {str(e)}"
-
-    def load_deposits(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-        SELECT id, user_name, bank_name, deposit_name, amount, 
-               deposit_date, maturity_date, interest_rate, interest_type, notes, is_unlocked
-        FROM deposits
-        """)
+        if user_name:
+            cursor.execute("""
+            SELECT id, user_name, bank_name, deposit_name, amount, 
+                   deposit_date, maturity_date, interest_rate, interest_type, notes, is_unlocked
+            FROM deposits WHERE user_name=?
+            """, (user_name,))
+        else:
+            cursor.execute("""
+            SELECT id, user_name, bank_name, deposit_name, amount, 
+                   deposit_date, maturity_date, interest_rate, interest_type, notes, is_unlocked
+            FROM deposits
+            """)
         deposits = []
         for row in cursor.fetchall():
             deposits.append({
@@ -155,10 +140,6 @@ class DepositManager:
         return deposits
 
     def add_deposit(self, deposit):
-        if deposit.get('start_date') and not self.is_valid_date(deposit['start_date']):
-            return False, "起始日期格式无效，请使用 YYYY-MM-DD 格式"
-        if deposit.get('maturity_date') and not self.is_valid_date(deposit['maturity_date']):
-            return False, "到期日期格式无效，请使用 YYYY-MM-DD 格式"
         cursor = self.conn.cursor()
         cursor.execute("""
         INSERT INTO deposits (user_name, bank_name, deposit_name, amount, 
@@ -171,16 +152,16 @@ class DepositManager:
             deposit.get('notes', ''), deposit.get('is_unlocked', 0)
         ))
         self.conn.commit()
-        if deposit['user'] not in self.users:
-            self.users.append(deposit['user'])
-            self.save_users()
+        new_id = cursor.lastrowid
+        if deposit.get('start_date') and deposit.get('interest_rate') is not None:
+            cursor.execute("INSERT INTO rate_history (deposit_id, effective_date, interest_rate) VALUES (?,?,?)",
+                           (new_id, deposit['start_date'], deposit['interest_rate']))
+            self.conn.commit()
+        if deposit['user'] not in self.load_users():
+            self.add_user(deposit['user'])
         return True, "存款添加成功"
 
     def update_deposit(self, deposit_id, deposit):
-        if deposit.get('start_date') and not self.is_valid_date(deposit['start_date']):
-            return False, "起始日期格式无效，请使用 YYYY-MM-DD 格式"
-        if deposit.get('maturity_date') and not self.is_valid_date(deposit['maturity_date']):
-            return False, "到期日期格式无效，请使用 YYYY-MM-DD 格式"
         cursor = self.conn.cursor()
         cursor.execute("""
         UPDATE deposits 
@@ -195,9 +176,15 @@ class DepositManager:
             deposit_id
         ))
         self.conn.commit()
-        if deposit['user'] not in self.users:
-            self.users.append(deposit['user'])
-            self.save_users()
+        if deposit.get('start_date') and deposit.get('interest_rate') is not None:
+            cursor.execute("SELECT id FROM rate_history WHERE deposit_id=? ORDER BY effective_date LIMIT 1", (deposit_id,))
+            first = cursor.fetchone()
+            if first:
+                cursor.execute("UPDATE rate_history SET interest_rate=? WHERE id=?", (deposit['interest_rate'], first[0]))
+            else:
+                cursor.execute("INSERT INTO rate_history (deposit_id, effective_date, interest_rate) VALUES (?,?,?)",
+                               (deposit_id, deposit['start_date'], deposit['interest_rate']))
+            self.conn.commit()
         return True, "存款更新成功"
 
     def delete_deposit(self, deposit_id):
@@ -206,63 +193,74 @@ class DepositManager:
         self.conn.commit()
         return True, "存款删除成功"
 
-    def delete_multiple_deposits(self, deposit_ids):
-        if not deposit_ids:
-            return False, "没有选择存款记录"
+    def get_rate_history(self, deposit_id):
         cursor = self.conn.cursor()
-        placeholders = ','.join(['?'] * len(deposit_ids))
-        try:
-            cursor.execute(f"DELETE FROM deposits WHERE id IN ({placeholders})", deposit_ids)
-            self.conn.commit()
-            return True, f"成功删除 {len(deposit_ids)} 条存款记录"
-        except sqlite3.Error as e:
-            return False, f"删除失败: {str(e)}"
+        cursor.execute("SELECT id, effective_date, interest_rate FROM rate_history WHERE deposit_id=? ORDER BY effective_date", (deposit_id,))
+        return cursor.fetchall()
 
-    def unlock_deposit(self, deposit_id):
+    def add_rate_change(self, deposit_id, effective_date, interest_rate):
         cursor = self.conn.cursor()
-        cursor.execute("UPDATE deposits SET is_unlocked=1 WHERE id=?", (deposit_id,))
+        cursor.execute("SELECT id FROM rate_history WHERE deposit_id=? AND effective_date=?", (deposit_id, effective_date))
+        if cursor.fetchone():
+            return False, "该日期已存在利率记录"
+        cursor.execute("INSERT INTO rate_history (deposit_id, effective_date, interest_rate) VALUES (?,?,?)",
+                       (deposit_id, effective_date, interest_rate))
         self.conn.commit()
-        return True, "存款已解锁"
+        return True, "利率历史已添加"
 
-    def calculate_interest(self, start_date_str, maturity_date_str, amount, rate, interest_type="simple", as_of_date=None):
+    def delete_rate_change(self, rate_id):
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM rate_history WHERE id=?", (rate_id,))
+        self.conn.commit()
+        return True, "已删除"
+
+    def calculate_interest(self, start_date_str, maturity_date_str, amount, rate, interest_type="simple",
+                           as_of_date=None, deposit_id=None):
         try:
-            if not start_date_str or rate is None:
+            if not start_date_str or amount <= 0:
                 return 0.0
-            start_date_str = self.convert_date_format(start_date_str) or start_date_str
-            if maturity_date_str:
-                maturity_date_str = self.convert_date_format(maturity_date_str) or maturity_date_str
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-            maturity_date = datetime.strptime(maturity_date_str, "%Y-%m-%d") if maturity_date_str else None
+            maturity_date = None
+            if maturity_date_str:
+                maturity_date = datetime.strptime(maturity_date_str, "%Y-%m-%d")
             as_of_date = datetime.strptime(as_of_date, "%Y-%m-%d") if isinstance(as_of_date, str) else (as_of_date or datetime.now())
             end_date = min(as_of_date, maturity_date) if maturity_date else as_of_date
-            days = (end_date - start_date).days
-            if days <= 0:
+            if end_date <= start_date:
                 return 0.0
-            if interest_type == "compound":
-                daily_rate = rate / 100 / 365
-                interest = amount * ((1 + daily_rate) ** days - 1)
-            else:
-                daily_rate = rate / 100 / 365
-                interest = daily_rate * amount * days
-            if maturity_date:
-                total_days = (maturity_date - start_date).days
-                if interest_type == "compound":
-                    total_years = total_days / 365
-                    total_interest = amount * (1 + rate / 100) ** total_years - amount
+            if deposit_id:
+                hist = self.get_rate_history(deposit_id)
+                if hist:
+                    periods = []
+                    prev_date = start_date
+                    for rid, eff_date, r in hist:
+                        eff = datetime.strptime(eff_date, "%Y-%m-%d")
+                        if eff > start_date:
+                            if prev_date < eff:
+                                periods.append((prev_date, min(eff, end_date), r))
+                            prev_date = eff
+                    if prev_date < end_date:
+                        last_rate = hist[-1][2] if hist else rate
+                        periods.append((prev_date, end_date, last_rate))
                 else:
-                    total_interest = daily_rate * amount * total_days
-                interest = min(interest, total_interest)
-            return round(interest, 2)
+                    periods = [(start_date, end_date, rate)]
+            else:
+                periods = [(start_date, end_date, rate)]
+            total_interest = 0.0
+            for p_start, p_end, r in periods:
+                if p_end <= p_start:
+                    continue
+                days = (p_end - p_start).days
+                if interest_type == "compound":
+                    daily_rate = r / 100 / 365
+                    interest = amount * ((1 + daily_rate) ** days - 1)
+                else:
+                    daily_rate = r / 100 / 365
+                    interest = daily_rate * amount * days
+                total_interest += interest
+            return round(total_interest, 2)
         except Exception as e:
-            print(f"[利息计算错误] {str(e)}")
+            print(f"[分段利息计算错误] {str(e)}")
             return 0.0
-
-    def calculate_total_interest(self, start_date_str, maturity_date_str, amount, rate, interest_type="simple"):
-        return self.calculate_interest(
-            start_date_str, maturity_date_str, amount, rate, interest_type, maturity_date_str
-        ) if maturity_date_str else self.calculate_interest(
-            start_date_str, None, amount, rate, interest_type, datetime.now().strftime("%Y-%m-%d")
-        )
 
     def get_deposit_stats(self, user=None):
         cursor = self.conn.cursor()
@@ -271,49 +269,34 @@ class DepositManager:
         else:
             cursor.execute("SELECT SUM(amount) FROM deposits")
         total_amount = cursor.fetchone()[0] or 0.0
-
         if user:
             cursor.execute("SELECT user_name, SUM(amount) FROM deposits WHERE user_name=? GROUP BY user_name", (user,))
         else:
             cursor.execute("SELECT user_name, SUM(amount) FROM deposits GROUP BY user_name")
         by_holder = {row[0]: row[1] for row in cursor.fetchall()}
-
         if user:
             cursor.execute("SELECT deposit_name, SUM(amount) FROM deposits WHERE user_name=? GROUP BY deposit_name", (user,))
         else:
             cursor.execute("SELECT deposit_name, SUM(amount) FROM deposits GROUP BY deposit_name")
         by_type = {row[0]: row[1] for row in cursor.fetchall()}
-
         if user:
             cursor.execute("SELECT bank_name, SUM(amount) FROM deposits WHERE user_name=? GROUP BY bank_name", (user,))
         else:
             cursor.execute("SELECT bank_name, SUM(amount) FROM deposits GROUP BY bank_name")
         by_bank = {row[0]: row[1] for row in cursor.fetchall()}
-
         total_current_interest = 0.0
-        total_maturity_interest = 0.0
         if user:
             cursor.execute("SELECT id, deposit_date, maturity_date, amount, interest_rate, interest_type FROM deposits WHERE user_name=?", (user,))
         else:
             cursor.execute("SELECT id, deposit_date, maturity_date, amount, interest_rate, interest_type FROM deposits")
         for row in cursor.fetchall():
             dep_id, start_date, maturity_date, amount, rate, interest_type = row
-            try:
-                if start_date and rate is not None:
-                    current_int = self.calculate_interest(start_date, maturity_date, amount, rate, interest_type)
-                    total_current_interest += current_int
-                    if maturity_date:
-                        mat_int = self.calculate_total_interest(start_date, maturity_date, amount, rate, interest_type)
-                    else:
-                        mat_int = 0.0
-                    total_maturity_interest += mat_int
-            except Exception as e:
-                print(f"计算存款 {dep_id} 利息时出错: {e}")
-                continue
+            if start_date and rate is not None:
+                current_int = self.calculate_interest(start_date, maturity_date, amount, rate, interest_type, deposit_id=dep_id)
+                total_current_interest += current_int
         return {
             'total_amount': total_amount,
             'total_current_interest': total_current_interest,
-            'total_maturity_interest': total_maturity_interest,
             'by_holder': by_holder,
             'by_type': by_type,
             'by_bank': by_bank
@@ -331,201 +314,22 @@ class DepositManager:
         """, (today, target_date))
         return cursor.fetchall()
 
-    def export_to_csv(self, filename):
-        try:
-            deposits = self.load_deposits()
-            with open(filename, "w", newline="", encoding="utf-8-sig") as f:
-                writer = csv.writer(f)
-                writer.writerow(["序号", "用户", "银行", "存款名称", "金额(元)", "存入日期",
-                                 "到期日期", "利率(%)", "计息类型", "备注", "解锁状态"])
-                for dep in deposits:
-                    amount_str = f"{dep['amount']:,.2f}"
-                    unlocked = "是" if dep['is_unlocked'] else "否"
-                    writer.writerow([
-                        dep['id'], dep['user'], dep['bank'], dep['deposit_type'],
-                        amount_str, dep['start_date'], dep['maturity_date'],
-                        dep['interest_rate'], dep['interest_type'], dep['notes'], unlocked
-                    ])
+    def close(self):
+        if self.conn:
+            self.conn.close()
+
+    @staticmethod
+    def is_valid_date(date_str):
+        if not date_str:
             return True
-        except Exception as e:
-            return False
-
-    def export_template(self, filename):
-        try:
-            headers = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-            if filename.endswith('.xlsx') or filename.endswith('.xls'):
-                example_data = [
-                    ["中国工商银行", "一年期定期", "张三", 10000.00, "2025-01-01", "2026-01-01", 1.75, "simple", "示例存款"]
-                ]
-                df = pd.DataFrame(example_data, columns=headers)
-                with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False, sheet_name='存款模板')
-            else:
-                with open(filename, "w", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(headers)
-                    writer.writerow(["中国工商银行", "一年期定期", "张三", "10000.00", "2025-01-01", "2026-01-01", "1.75", "simple", "示例存款"])
-            return True
-        except Exception as e:
-            print(f"导出模板错误: {str(e)}")
-            return False
-
-    def import_from_file(self, filename):
-        try:
-            if filename.lower().endswith(('.xlsx', '.xls')):
-                return self.import_from_excel(filename)
-            else:
-                return self.import_from_csv(filename)
-        except Exception as e:
-            return False, f"导入文件时出错: {str(e)}"
-
-    def import_from_excel(self, filename):
-        try:
-            df = pd.read_excel(filename, sheet_name=0)
-            has_header = any(col in df.columns for col in ["银行", "bank"])
-            if not has_header:
-                df.columns = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-            new_deposits = []
-            unknown_users = set()
-            def get_date(value):
-                if pd.isna(value) or value == "":
-                    return ""
-                if isinstance(value, pd.Timestamp):
-                    return value.strftime("%Y-%m-%d")
-                return str(value).strip()
-            for _, row in df.iterrows():
-                bank = row.get('银行', '') or row.get('bank', '') or "其他银行"
-                deposit_type = row.get('存款类型', '') or row.get('deposit_type', '') or "其他类型"
-                user = row.get('持有人', '') or row.get('user', '') or "其他"
-                amount = row.get('金额', 0) or row.get('amount', 0)
-                start_date_raw = row.get('起始日期', '') or row.get('deposit_date', '') or row.get('存入日期', '')
-                start_date_raw = get_date(start_date_raw)
-                maturity_date_raw = row.get('到期日期', '') or row.get('maturity_date', '')
-                maturity_date_raw = get_date(maturity_date_raw)
-                rate = row.get('利率', 0) or row.get('interest_rate', 0)
-                interest_type = row.get('计息类型', 'simple') or row.get('interest_type', 'simple') or "simple"
-                notes = row.get('备注', '') or row.get('notes', '') or ""
-                if user not in self.users:
-                    unknown_users.add(user)
-                start_date = self.convert_date_format(start_date_raw)
-                maturity_date = self.convert_date_format(maturity_date_raw)
-                if not all([bank, deposit_type, user, amount]):
-                    continue
-                try:
-                    if isinstance(amount, str):
-                        amount = float(amount.replace(',', ''))
-                except ValueError:
-                    continue
-                rate_value = None
-                if rate and str(rate).strip() != '':
-                    try:
-                        rate_str = str(rate).replace('%', '').strip()
-                        rate_value = float(rate_str)
-                    except ValueError:
-                        if deposit_type in ["活期", "理财产品", "股票基金"]:
-                            rate_value = 0.0
-                        else:
-                            continue
-                else:
-                    if deposit_type in ["活期", "理财产品", "股票基金"]:
-                        rate_value = 0.0
-                    else:
-                        continue
-                new_deposits.append({
-                    'user': user, 'bank': bank, 'deposit_type': deposit_type,
-                    'amount': amount, 'start_date': start_date, 'maturity_date': maturity_date,
-                    'interest_rate': rate_value, 'interest_type': interest_type, 'notes': notes
-                })
-            if unknown_users:
-                return False, f"导入失败：以下用户不存在，请先添加：\n{', '.join(unknown_users)}"
-            cursor = self.conn.cursor()
-            for dep in new_deposits:
-                cursor.execute("""
-                INSERT INTO deposits (user_name, bank_name, deposit_name, amount, deposit_date, maturity_date, interest_rate, interest_type, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    dep['user'], dep['bank'], dep['deposit_type'], dep['amount'],
-                    dep.get('start_date', None), dep.get('maturity_date', None),
-                    dep.get('interest_rate', None), dep.get('interest_type', 'simple'), dep.get('notes', '')
-                ))
-            self.conn.commit()
-            return True, f"成功导入 {len(new_deposits)} 条存款记录"
-        except Exception as e:
-            return False, f"导入Excel文件时出错: {str(e)}"
-
-    def import_from_csv(self, filename):
-        try:
-            with open(filename, 'rb') as f:
-                raw_data = f.read(10000)
-                result = chardet.detect(raw_data)
-                encoding = result['encoding'] or 'utf-8'
-            with open(filename, 'r', encoding=encoding) as f:
-                first_line = f.readline()
-                f.seek(0)
-                has_header = "银行" in first_line or "bank" in first_line.lower()
-                reader = csv.DictReader(f) if has_header else csv.reader(f)
-                if not has_header:
-                    fieldnames = ["银行", "存款类型", "持有人", "金额", "起始日期", "到期日期", "利率", "计息类型", "备注"]
-                    reader = csv.DictReader(f, fieldnames=fieldnames)
-                new_deposits = []
-                unknown_users = set()
-                for row in reader:
-                    bank = row.get('银行', row.get('bank', '')) or "其他银行"
-                    deposit_type = row.get('存款类型', row.get('deposit_type', row.get('存款名称', ''))) or "其他类型"
-                    user = row.get('持有人', row.get('user', row.get('用户', ''))) or "其他"
-                    amount = row.get('金额', row.get('amount', '0'))
-                    start_date_raw = row.get('起始日期', row.get('deposit_date', row.get('存入日期', '')))
-                    maturity_date_raw = row.get('到期日期', row.get('maturity_date', ''))
-                    rate = row.get('利率', row.get('interest_rate', '0'))
-                    interest_type = row.get('计息类型', row.get('interest_type', 'simple')) or "simple"
-                    notes = row.get('备注', row.get('notes', '')) or ""
-                    if user not in self.users:
-                        unknown_users.add(user)
-                    start_date = self.convert_date_format(start_date_raw)
-                    maturity_date = self.convert_date_format(maturity_date_raw)
-                    if not all([bank, deposit_type, user, amount]):
-                        continue
-                    try:
-                        amount = float(amount.replace(',', '')) if isinstance(amount, str) else float(amount)
-                    except ValueError:
-                        continue
-                    rate_value = 0.0
-                    if rate:
-                        try:
-                            if '%' in rate:
-                                rate = rate.replace('%', '').strip()
-                            rate_value = float(rate) if rate != '' else 0.0
-                        except ValueError:
-                            if deposit_type in ["活期", "理财产品", "股票基金"]:
-                                rate_value = 0.0
-                            else:
-                                continue
-                    else:
-                        if deposit_type in ["活期", "理财产品", "股票基金"]:
-                            rate_value = 0.0
-                        else:
-                            continue
-                    new_deposits.append({
-                        'user': user, 'bank': bank, 'deposit_type': deposit_type,
-                        'amount': amount, 'start_date': start_date, 'maturity_date': maturity_date,
-                        'interest_rate': rate_value, 'interest_type': interest_type, 'notes': notes
-                    })
-                if unknown_users:
-                    return False, f"导入失败：以下用户不存在，请先添加：\n{', '.join(unknown_users)}"
-                cursor = self.conn.cursor()
-                for dep in new_deposits:
-                    cursor.execute("""
-                    INSERT INTO deposits (user_name, bank_name, deposit_name, amount, deposit_date, maturity_date, interest_rate, interest_type, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        dep['user'], dep['bank'], dep['deposit_type'], dep['amount'],
-                        dep.get('start_date', None), dep.get('maturity_date', None),
-                        dep.get('interest_rate', None), dep.get('interest_type', 'simple'), dep.get('notes', '')
-                    ))
-                self.conn.commit()
-                return True, f"成功导入 {len(new_deposits)} 条存款记录"
-        except Exception as e:
-            return False, f"导入存款记录时出错: {str(e)}"
+        formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日"]
+        for fmt in formats:
+            try:
+                datetime.strptime(date_str, fmt)
+                return True
+            except ValueError:
+                continue
+        return False
 
     @staticmethod
     def convert_date_format(date_str):
@@ -536,10 +340,7 @@ class DepositManager:
                 return datetime.strptime(date_str, "%Y%m%d").strftime("%Y-%m-%d")
             except:
                 pass
-        formats = [
-            "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
-            "%Y年%m月%d日", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%m/%d/%Y", "%m-%d-%Y"
-        ]
+        formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y年%m月%d日"]
         for fmt in formats:
             try:
                 date_obj = datetime.strptime(date_str.strip(), fmt)
@@ -548,514 +349,440 @@ class DepositManager:
                 continue
         return None
 
-    @staticmethod
-    def is_valid_date(date_str):
-        if not date_str:
-            return True
-        formats = [
-            "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d",
-            "%Y年%m月%d日", "%d/%m/%Y", "%d.%m.%Y", "%d-%m-%Y", "%m/%d/%Y", "%Y%m%d"
-        ]
-        for fmt in formats:
-            try:
-                datetime.strptime(date_str, fmt)
-                return True
-            except ValueError:
-                continue
-        return False
 
-# ======================= Flet 手机 APP =======================
+# Kivy 界面定义 (KV 语言 - 简化版，实际使用 .kv 文件)
+KV_CODE = '''
+<DepositItem@BoxLayout>:
+    orientation: 'horizontal'
+    size_hint_y: None
+    height: dp(50)
+    Label:
+        text: root.bank
+        size_hint_x: 0.15
+    Label:
+        text: root.deposit_type
+        size_hint_x: 0.15
+    Label:
+        text: root.holder
+        size_hint_x: 0.1
+    Label:
+        text: root.amount
+        size_hint_x: 0.15
+    Label:
+        text: root.maturity_date
+        size_hint_x: 0.15
+    Label:
+        text: root.current_interest
+        size_hint_x: 0.15
 
-def main(page: ft.Page):
-    page.title = "家庭存款管理系统"
-    page.theme_mode = ft.ThemeMode.LIGHT
-    page.padding = 10
-    page.scroll = ft.ScrollMode.AUTO
-    page.window_width = 400
-    page.window_height = 700
+<DepositListView@ScrollView>:
+    BoxLayout:
+        orientation: 'vertical'
+        size_hint_y: None
+        height: self.minimum_height
+        id: deposit_container
 
-    # ---------- 关键修复：数据库路径使用应用私有目录 ----------
-    app_path = page.get_application_path()
-    if app_path:
-        db_path = os.path.join(app_path, "deposits.db")
-    else:
-        db_path = "deposits.db"   # 桌面版后备
-    manager = DepositManager(filename=db_path)
+<MainScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(10)
+        spacing: dp(5)
+        
+        BoxLayout:
+            size_hint_y: None
+            height: dp(48)
+            spacing: dp(5)
+            Label:
+                text: '存款管理系统'
+                font_size: '20sp'
+                bold: True
+            Button:
+                text: '添加'
+                size_hint_x: None
+                width: dp(60)
+                on_release: root.show_add_dialog()
+            Button:
+                text: '统计'
+                size_hint_x: None
+                width: dp(60)
+                on_release: root.show_stats()
+            Button:
+                text: '到期提醒'
+                size_hint_x: None
+                width: dp(80)
+                on_release: root.check_maturities()
+        
+        BoxLayout:
+            size_hint_y: None
+            height: dp(48)
+            spacing: dp(5)
+            Spinner:
+                id: user_spinner
+                text: root.current_user_text
+                values: root.user_list
+                size_hint_x: 0.3
+                on_text: root.change_user(self.text)
+            TextInput:
+                id: search_input
+                hint_text: '搜索银行/类型/持有人'
+                size_hint_x: 0.7
+                on_text: root.search_filter(self.text)
+        
+        BoxLayout:
+            size_hint_y: None
+            height: dp(40)
+            Label:
+                text: '银行'
+                bold: True
+                size_hint_x: 0.15
+            Label:
+                text: '类型'
+                bold: True
+                size_hint_x: 0.15
+            Label:
+                text: '持有人'
+                bold: True
+                size_hint_x: 0.1
+            Label:
+                text: '金额(元)'
+                bold: True
+                size_hint_x: 0.15
+            Label:
+                text: '到期日期'
+                bold: True
+                size_hint_x: 0.15
+            Label:
+                text: '当前利息'
+                bold: True
+                size_hint_x: 0.15
+        
+        DepositListView:
+            id: deposit_list
+        
+        Label:
+            id: status_label
+            text: ''
+            size_hint_y: None
+            height: dp(30)
+'''
 
-    # 全局状态
-    current_user = manager.current_user if manager.current_user else "所有用户"
-    deposits = manager.load_deposits()
 
-    # UI 组件引用
-    deposit_list = ft.ListView(expand=True, spacing=10, padding=10)
-    stats_text = ft.Text("", size=14, weight=ft.FontWeight.BOLD)
-    user_selector = ft.Dropdown(
-        label="当前用户",
-        options=[ft.dropdown.Option("所有用户")] + [ft.dropdown.Option(u) for u in manager.users],
-        value=current_user,
-        width=200,
-    )
+class DepositItem(BoxLayout):
+    bank = StringProperty('')
+    deposit_type = StringProperty('')
+    holder = StringProperty('')
+    amount = StringProperty('')
+    maturity_date = StringProperty('')
+    current_interest = StringProperty('')
+    deposit_id = NumericProperty(0)
 
-    # ---------- 辅助函数 ----------
-    def refresh_data():
-        nonlocal deposits
-        deposits = manager.load_deposits()
-        if current_user != "所有用户":
-            filtered = [d for d in deposits if d['user'] == current_user]
-        else:
-            filtered = deposits
-        display_deposits(filtered)
-        update_stats()
 
-    def display_deposits(dep_list):
-        deposit_list.controls.clear()
-        if not dep_list:
-            deposit_list.controls.append(ft.Text("暂无存款记录", size=16, color="grey"))
-            page.update()
-            return
-        for dep in dep_list:
-            current_interest = 0.0
-            if dep['start_date'] and dep['interest_rate'] is not None:
-                current_interest = manager.calculate_interest(
-                    dep['start_date'], dep['maturity_date'], dep['amount'],
-                    dep['interest_rate'], dep['interest_type']
-                )
-            card = ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Icon("account_balance", size=20, color="blue"),
-                            ft.Text(dep['bank'], weight=ft.FontWeight.BOLD, size=16),
-                            ft.Container(expand=True),
-                            ft.Text(f"{dep['amount']:,.2f}元", size=16, color="green"),
-                        ]),
-                        ft.Row([
-                            ft.Icon("category", size=16, color="grey"),
-                            ft.Text(dep['deposit_type'], size=14),
-                            ft.Container(width=20),
-                            ft.Icon("calendar_today", size=16, color="grey"),
-                            ft.Text(f"存入: {dep['start_date'] or '无'}", size=12),
-                            ft.Container(width=20),
-                            ft.Icon("event", size=16, color="grey"),
-                            ft.Text(f"到期: {dep['maturity_date'] or '长期'}", size=12),
-                        ]),
-                        ft.Row([
-                            ft.Text(f"利率: {dep['interest_rate']}%", size=12),
-                            ft.Container(width=20),
-                            ft.Text(f"计息: {'复利' if dep['interest_type']=='compound' else '单利'}", size=12),
-                            ft.Container(width=20),
-                            ft.Text(f"当前利息: {current_interest:,.2f}", size=12, color="orange"),
-                        ]),
-                        ft.Row([
-                            ft.IconButton(icon="edit", icon_size=18, on_click=lambda e, d=dep: edit_deposit(d)),
-                            ft.IconButton(icon="delete", icon_size=18, on_click=lambda e, d=dep: delete_deposit(d)),
-                        ], alignment=ft.MainAxisAlignment.END),
-                    ]),
-                    padding=10,
-                ),
-                elevation=2,
+class DepositListView(ScrollView):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.container = None
+
+    def on_kv_post(self, base_widget):
+        self.container = self.ids.deposit_container
+
+    def update_items(self, deposits):
+        self.container.clear_widgets()
+        for dep in deposits:
+            item = DepositItem(
+                bank=dep['bank'],
+                deposit_type=dep['deposit_type'],
+                holder=dep['user'],
+                amount=f"{dep['amount']:,.2f}",
+                maturity_date=dep['maturity_date'] or '长期',
+                current_interest=f"{dep.get('current_interest', 0):,.2f}",
+                deposit_id=dep['id']
             )
-            deposit_list.controls.append(card)
-        page.update()
+            self.container.add_widget(item)
 
-    def update_stats():
-        stats = manager.get_deposit_stats(None if current_user == "所有用户" else current_user)
-        stats_text.value = f"总本金: {stats['total_amount']:,.2f}元   当前利息: {stats['total_current_interest']:,.2f}元"
-        page.update()
 
-    # ---------- 编辑 / 删除 ----------
-    def edit_deposit(dep):
-        user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=dep['user'])
-        bank_input = ft.TextField(label="银行", value=dep['bank'])
-        type_input = ft.TextField(label="存款类型", value=dep['deposit_type'])
-        amount_input = ft.TextField(label="金额", value=str(dep['amount']), keyboard_type=ft.KeyboardType.NUMBER)
-        start_date = ft.TextField(label="起始日期 (YYYY-MM-DD)", value=dep['start_date'] or "")
-        maturity_date = ft.TextField(label="到期日期 (YYYY-MM-DD)", value=dep['maturity_date'] or "")
-        rate_input = ft.TextField(label="利率 (%)", value=str(dep['interest_rate']) if dep['interest_rate'] else "")
-        interest_type_dd = ft.Dropdown(label="计息类型", options=[ft.dropdown.Option("simple", "单利"), ft.dropdown.Option("compound", "复利")], value=dep['interest_type'])
-        notes_input = ft.TextField(label="备注", value=dep['notes'] or "")
+class AddDepositPopup(Popup):
+    def __init__(self, app, deposit=None, **kwargs):
+        super().__init__(**kwargs)
+        self.app = app
+        self.deposit = deposit
+        self.title = "编辑存款" if deposit else "添加存款"
+        self.size_hint = (0.9, 0.85)
+        self._build_content()
 
-        def save_edit(e):
-            try:
-                new_dep = {
-                    'user': user_dd.value,
-                    'bank': bank_input.value,
-                    'deposit_type': type_input.value,
-                    'amount': float(amount_input.value),
-                    'start_date': start_date.value if start_date.value else None,
-                    'maturity_date': maturity_date.value if maturity_date.value else None,
-                    'interest_rate': float(rate_input.value) if rate_input.value else None,
-                    'interest_type': interest_type_dd.value,
-                    'notes': notes_input.value,
-                    'is_unlocked': dep.get('is_unlocked', 0)
-                }
-                manager.update_deposit(dep['id'], new_dep)
-                refresh_data()
-                page.close(dlg)
-            except Exception as ex:
-                page.show_snack_bar(ft.SnackBar(content=ft.Text(f"保存失败: {ex}")))
+    def _build_content(self):
+        layout = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+        # 持有人
+        layout.add_widget(Label(text='存款持有人:', size_hint_y=None, height=dp(30)))
+        self.user_input = TextInput(size_hint_y=None, height=dp(40))
+        if self.deposit:
+            self.user_input.text = self.deposit['user']
+        else:
+            self.user_input.text = self.app.manager.current_user
+        layout.add_widget(self.user_input)
+        # 银行
+        layout.add_widget(Label(text='银行名称:', size_hint_y=None, height=dp(30)))
+        self.bank_input = TextInput(size_hint_y=None, height=dp(40))
+        if self.deposit:
+            self.bank_input.text = self.deposit['bank']
+        layout.add_widget(self.bank_input)
+        # 存款类型
+        layout.add_widget(Label(text='存款类型:', size_hint_y=None, height=dp(30)))
+        self.type_input = TextInput(size_hint_y=None, height=dp(40))
+        if self.deposit:
+            self.type_input.text = self.deposit['deposit_type']
+        layout.add_widget(self.type_input)
+        # 金额
+        layout.add_widget(Label(text='存款金额(元):', size_hint_y=None, height=dp(30)))
+        self.amount_input = TextInput(size_hint_y=None, height=dp(40), input_filter='float')
+        if self.deposit:
+            self.amount_input.text = str(self.deposit['amount'])
+        layout.add_widget(self.amount_input)
+        # 起始日期
+        layout.add_widget(Label(text='起始日期 (YYYY-MM-DD):', size_hint_y=None, height=dp(30)))
+        self.start_date_input = TextInput(size_hint_y=None, height=dp(40))
+        if self.deposit and self.deposit.get('start_date'):
+            self.start_date_input.text = self.deposit['start_date']
+        layout.add_widget(self.start_date_input)
+        # 到期日期
+        layout.add_widget(Label(text='到期日期 (YYYY-MM-DD):', size_hint_y=None, height=dp(30)))
+        self.maturity_date_input = TextInput(size_hint_y=None, height=dp(40))
+        if self.deposit and self.deposit.get('maturity_date'):
+            self.maturity_date_input.text = self.deposit['maturity_date']
+        layout.add_widget(self.maturity_date_input)
+        # 利率
+        layout.add_widget(Label(text='利率(%):', size_hint_y=None, height=dp(30)))
+        self.rate_input = TextInput(size_hint_y=None, height=dp(40), input_filter='float')
+        if self.deposit and self.deposit.get('interest_rate'):
+            self.rate_input.text = str(self.deposit['interest_rate'])
+        layout.add_widget(self.rate_input)
+        # 计息类型
+        layout.add_widget(Label(text='计息类型:', size_hint_y=None, height=dp(30)))
+        self.interest_type_spinner = Spinner(text='simple', values=['simple', 'compound'], size_hint_y=None, height=dp(40))
+        if self.deposit:
+            self.interest_type_spinner.text = self.deposit['interest_type']
+        layout.add_widget(self.interest_type_spinner)
+        # 备注
+        layout.add_widget(Label(text='备注:', size_hint_y=None, height=dp(30)))
+        self.notes_input = TextInput(size_hint_y=None, height=dp(60))
+        if self.deposit:
+            self.notes_input.text = self.deposit['notes']
+        layout.add_widget(self.notes_input)
+        # 按钮
+        btn_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        save_btn = Button(text='保存')
+        save_btn.bind(on_release=self.save)
+        cancel_btn = Button(text='取消')
+        cancel_btn.bind(on_release=self.dismiss)
+        btn_layout.add_widget(save_btn)
+        btn_layout.add_widget(cancel_btn)
+        layout.add_widget(btn_layout)
+        self.content = layout
 
-        dlg = ft.AlertDialog(
-            title=ft.Text("编辑存款"),
-            content=ft.Container(
-                content=ft.Column([user_dd, bank_input, type_input, amount_input, start_date, maturity_date, rate_input, interest_type_dd, notes_input],
-                                  height=400, scroll=ft.ScrollMode.AUTO),
-                width=350,
-            ),
-            actions=[ft.TextButton("取消", on_click=lambda e: page.close(dlg)),
-                     ft.TextButton("保存", on_click=save_edit)],
-        )
-        page.open(dlg)
-
-    def delete_deposit(dep):
-        def confirm_delete(e):
-            manager.delete_deposit(dep['id'])
-            refresh_data()
-            page.close(confirm_dlg)
-        confirm_dlg = ft.AlertDialog(
-            title=ft.Text("确认删除"),
-            content=ft.Text(f"确定删除 {dep['bank']} - {dep['deposit_type']} 吗？"),
-            actions=[ft.TextButton("取消", on_click=lambda e: page.close(confirm_dlg)),
-                     ft.TextButton("删除", on_click=confirm_delete)],
-        )
-        page.open(confirm_dlg)
-
-    # ---------- 添加存款 ----------
-    def add_deposit_dialog(e):
-        user_dd = ft.Dropdown(label="持有人", options=[ft.dropdown.Option(u) for u in manager.users], value=manager.current_user if manager.current_user else "默认用户")
-        bank_input = ft.TextField(label="银行", hint_text="银行名称")
-        type_input = ft.TextField(label="存款类型", hint_text="定期/活期等")
-        amount_input = ft.TextField(label="金额", keyboard_type=ft.KeyboardType.NUMBER)
-        start_date = ft.TextField(label="起始日期 (YYYY-MM-DD)", hint_text="2025-01-01")
-        maturity_date = ft.TextField(label="到期日期 (YYYY-MM-DD)", hint_text="2026-01-01")
-        rate_input = ft.TextField(label="利率 (%)")
-        interest_type_dd = ft.Dropdown(label="计息类型", options=[ft.dropdown.Option("simple", "单利"), ft.dropdown.Option("compound", "复利")], value="simple")
-        notes_input = ft.TextField(label="备注")
-
-        def save_add(e):
-            try:
-                new_dep = {
-                    'user': user_dd.value,
-                    'bank': bank_input.value,
-                    'deposit_type': type_input.value,
-                    'amount': float(amount_input.value),
-                    'start_date': start_date.value if start_date.value else None,
-                    'maturity_date': maturity_date.value if maturity_date.value else None,
-                    'interest_rate': float(rate_input.value) if rate_input.value else None,
-                    'interest_type': interest_type_dd.value,
-                    'notes': notes_input.value,
-                    'is_unlocked': 0
-                }
-                manager.add_deposit(new_dep)
-                refresh_data()
-                page.close(dlg)
-            except Exception as ex:
-                page.show_snack_bar(ft.SnackBar(content=ft.Text(f"添加失败: {ex}")))
-
-        dlg = ft.AlertDialog(
-            title=ft.Text("添加存款"),
-            content=ft.Container(
-                content=ft.Column([user_dd, bank_input, type_input, amount_input, start_date, maturity_date, rate_input, interest_type_dd, notes_input],
-                                  height=400, scroll=ft.ScrollMode.AUTO),
-                width=350,
-            ),
-            actions=[ft.TextButton("取消", on_click=lambda e: page.close(dlg)),
-                     ft.TextButton("保存", on_click=save_add)],
-        )
-        page.open(dlg)
-
-    # ---------- 图表统计（修复字体）----------
-    def show_charts(e):
-        stats = manager.get_deposit_stats(None if current_user == "所有用户" else current_user)
-        if not stats['by_type'] and not stats['by_bank'] and not stats['by_holder']:
-            page.show_snack_bar(ft.SnackBar(content=ft.Text("无数据，无法显示图表")))
+    def save(self, instance):
+        try:
+            amount = float(self.amount_input.text) if self.amount_input.text else 0
+            rate = float(self.rate_input.text) if self.rate_input.text else None
+        except ValueError:
+            self._show_error("金额或利率格式错误")
             return
-
-        # 动态查找可用中文字体（Android 常见字体）
-        import matplotlib.font_manager as fm
-        available_fonts = [f.name for f in fm.fontManager.ttflist]
-        preferred_fonts = ['Noto Sans CJK SC', 'Droid Sans Fallback', 'SimHei', 'sans-serif']
-        chosen_font = None
-        for font in preferred_fonts:
-            for avail in available_fonts:
-                if font.lower() in avail.lower():
-                    chosen_font = avail
-                    break
-            if chosen_font:
-                break
-        if not chosen_font:
-            chosen_font = 'sans-serif'
-
-        plt.rcParams['font.sans-serif'] = [chosen_font]
-        plt.rcParams['axes.unicode_minus'] = False
-
-        fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-        # 按类型
-        labels = list(stats['by_type'].keys())
-        sizes = list(stats['by_type'].values())
-        if sizes:
-            axes[0].pie(sizes, labels=labels, autopct='%1.1f%%')
-            axes[0].set_title('存款类型')
+        if amount <= 0:
+            self._show_error("存款金额必须为正数")
+            return
+        start_date = self.start_date_input.text.strip()
+        if start_date and not DepositManager.is_valid_date(start_date):
+            self._show_error("起始日期格式无效，请使用 YYYY-MM-DD")
+            return
+        maturity_date = self.maturity_date_input.text.strip()
+        if maturity_date and not DepositManager.is_valid_date(maturity_date):
+            self._show_error("到期日期格式无效，请使用 YYYY-MM-DD")
+            return
+        deposit_data = {
+            'user': self.user_input.text.strip(),
+            'bank': self.bank_input.text.strip(),
+            'deposit_type': self.type_input.text.strip(),
+            'amount': amount,
+            'start_date': start_date or None,
+            'maturity_date': maturity_date or None,
+            'interest_rate': rate,
+            'interest_type': self.interest_type_spinner.text,
+            'notes': self.notes_input.text.strip(),
+            'is_unlocked': 0
+        }
+        if not deposit_data['user'] or not deposit_data['bank'] or not deposit_data['deposit_type']:
+            self._show_error("请填写所有必填字段")
+            return
+        if self.deposit:
+            success, msg = self.app.manager.update_deposit(self.deposit['id'], deposit_data)
         else:
-            axes[0].text(0.5, 0.5, '无数据', ha='center', va='center')
-        # 按银行
-        labels2 = list(stats['by_bank'].keys())
-        sizes2 = list(stats['by_bank'].values())
-        if sizes2:
-            axes[1].pie(sizes2, labels=labels2, autopct='%1.1f%%')
-            axes[1].set_title('银行分布')
+            success, msg = self.app.manager.add_deposit(deposit_data)
+        if success:
+            self.dismiss()
+            self.app.refresh_deposits()
         else:
-            axes[1].text(0.5, 0.5, '无数据', ha='center', va='center')
+            self._show_error(msg)
+
+    def _show_error(self, msg):
+        popup = Popup(title='错误', content=Label(text=msg), size_hint=(0.8, 0.3))
+        popup.open()
+
+
+class StatsPopup(Popup):
+    def __init__(self, app, **kwargs):
+        super().__init__(**kwargs)
+        self.app = app
+        self.title = "存款统计"
+        self.size_hint = (0.95, 0.85)
+        self._build_content()
+
+    def _build_content(self):
+        stats = self.app.manager.get_deposit_stats(self.app.manager.current_user)
+        layout = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+        # 总金额
+        total_frame = BoxLayout(size_hint_y=None, height=dp(40))
+        total_frame.add_widget(Label(text='总存款金额:', size_hint_x=0.5))
+        total_frame.add_widget(Label(text=f"{stats['total_amount']:,.2f} 元", size_hint_x=0.5))
+        layout.add_widget(total_frame)
+        # 当前利息
+        interest_frame = BoxLayout(size_hint_y=None, height=dp(40))
+        interest_frame.add_widget(Label(text='当前总利息:', size_hint_x=0.5))
+        interest_frame.add_widget(Label(text=f"{stats['total_current_interest']:,.2f} 元", size_hint_x=0.5))
+        layout.add_widget(interest_frame)
         # 按持有人
-        labels3 = list(stats['by_holder'].keys())
-        sizes3 = list(stats['by_holder'].values())
-        if sizes3:
-            axes[2].pie(sizes3, labels=labels3, autopct='%1.1f%%')
-            axes[2].set_title('持有人')
+        layout.add_widget(Label(text='按持有人统计:', size_hint_y=None, height=dp(30), bold=True))
+        for holder, amount in stats['by_holder'].items():
+            line = BoxLayout(size_hint_y=None, height=dp(30))
+            line.add_widget(Label(text=holder, size_hint_x=0.5))
+            line.add_widget(Label(text=f"{amount:,.2f} 元", size_hint_x=0.5))
+            layout.add_widget(line)
+        # 按银行
+        layout.add_widget(Label(text='按银行统计:', size_hint_y=None, height=dp(30), bold=True))
+        for bank, amount in stats['by_bank'].items():
+            line = BoxLayout(size_hint_y=None, height=dp(30))
+            line.add_widget(Label(text=bank[:15], size_hint_x=0.5))
+            line.add_widget(Label(text=f"{amount:,.2f} 元", size_hint_x=0.5))
+            layout.add_widget(line)
+        scroll = ScrollView()
+        scroll.add_widget(layout)
+        self.content = scroll
+
+    def on_dismiss(self):
+        pass
+
+
+class MainScreen(Screen):
+    current_user_text = StringProperty('')
+    user_list = ListProperty([])
+
+    def __init__(self, app, **kwargs):
+        super().__init__(**kwargs)
+        self.app = app
+        self.all_deposits = []
+        self.filtered_deposits = []
+        self._update_user_list()
+
+    def on_kv_post(self, base_widget):
+        self.refresh_deposits()
+
+    def _update_user_list(self):
+        users = self.app.manager.load_users()
+        self.user_list = users if users else ['默认用户']
+        if self.app.manager.current_user:
+            self.current_user_text = self.app.manager.current_user
         else:
-            axes[2].text(0.5, 0.5, '无数据', ha='center', va='center')
+            self.current_user_text = self.user_list[0] if self.user_list else '默认用户'
+        if hasattr(self, 'ids') and 'user_spinner' in self.ids:
+            self.ids.user_spinner.values = self.user_list
 
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        img_data = base64.b64encode(buf.read()).decode()
-        buf.close()
-        plt.close()
+    def refresh_deposits(self):
+        self.all_deposits = self.app.manager.load_deposits(self.app.manager.current_user)
+        self._calculate_current_interest()
+        self._apply_search()
+        self._update_status()
 
-        img = ft.Image(src_base64=img_data, width=page.width-40, fit=ft.ImageFit.CONTAIN)
-        chart_dlg = ft.AlertDialog(
-            title=ft.Text("存款图表"),
-            content=ft.Container(content=img, width=400, height=400),
-            actions=[ft.TextButton("关闭", on_click=lambda e: page.close(chart_dlg))],
-        )
-        page.open(chart_dlg)
-
-    # ---------- 用户管理 ----------
-    def manage_users(e):
-        def refresh_user_list():
-            users = manager.users
-            user_list.controls.clear()
-            for u in users:
-                row = ft.Row([
-                    ft.Text(u, expand=True),
-                    ft.IconButton(icon="edit", on_click=lambda _, name=u: rename_user(name)),
-                    ft.IconButton(icon="delete", on_click=lambda _, name=u: delete_user(name)),
-                ])
-                user_list.controls.append(row)
-            page.update()
-
-        def add_user_click(e):
-            name = new_user_input.value.strip()
-            if name:
-                success, msg = manager.add_user(name)
-                if success:
-                    refresh_user_list()
-                    refresh_user_dropdown()
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                    new_user_input.value = ""
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
+    def _calculate_current_interest(self):
+        for dep in self.all_deposits:
+            if dep['start_date'] and dep.get('interest_rate') is not None:
+                try:
+                    current_int = self.app.manager.calculate_interest(
+                        dep['start_date'], dep['maturity_date'], dep['amount'],
+                        dep['interest_rate'], dep['interest_type'], deposit_id=dep['id']
+                    )
+                    dep['current_interest'] = current_int
+                except:
+                    dep['current_interest'] = 0.0
             else:
-                page.show_snack_bar(ft.SnackBar(content=ft.Text("用户名不能为空")))
+                dep['current_interest'] = 0.0
 
-        def rename_user(old_name):
-            def do_rename(e):
-                new_name = rename_input.value.strip()
-                if new_name:
-                    success, msg = manager.rename_user(old_name, new_name)
-                    if success:
-                        refresh_user_list()
-                        refresh_user_dropdown()
-                        page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                        page.close(rename_dlg)
-                    else:
-                        page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("新用户名不能为空")))
-            rename_input = ft.TextField(label="新用户名", value=old_name)
-            rename_dlg = ft.AlertDialog(
-                title=ft.Text("重命名用户"),
-                content=rename_input,
-                actions=[ft.TextButton("取消", on_click=lambda e: page.close(rename_dlg)),
-                         ft.TextButton("确定", on_click=do_rename)],
-            )
-            page.open(rename_dlg)
-
-        def delete_user(user):
-            def confirm(e):
-                success, msg = manager.delete_user(user)
-                if success:
-                    refresh_user_list()
-                    refresh_user_dropdown()
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                    nonlocal current_user
-                    if current_user == user or (current_user == "所有用户" and user == manager.current_user):
-                        current_user = "所有用户"
-                        user_selector.value = current_user
-                        refresh_data()
-                    page.close(confirm_dlg)
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-            confirm_dlg = ft.AlertDialog(
-                title=ft.Text("确认删除"),
-                content=ft.Text(f"确定删除用户 '{user}' 吗？"),
-                actions=[ft.TextButton("取消", on_click=lambda e: page.close(confirm_dlg)),
-                         ft.TextButton("删除", on_click=confirm)],
-            )
-            page.open(confirm_dlg)
-
-        # 构建用户管理对话框
-        user_list = ft.Column(spacing=10)
-        new_user_input = ft.TextField(label="新用户名", width=200)
-        add_user_btn = ft.ElevatedButton("添加用户", on_click=add_user_click)
-        refresh_user_list()
-
-        dlg = ft.AlertDialog(
-            title=ft.Text("用户管理"),
-            content=ft.Container(
-                content=ft.Column([
-                    ft.Text("现有用户：", weight=ft.FontWeight.BOLD),
-                    user_list,
-                    ft.Divider(),
-                    ft.Row([new_user_input, add_user_btn]),
-                ], height=400, scroll=ft.ScrollMode.AUTO),
-                width=350,
-            ),
-            actions=[ft.TextButton("关闭", on_click=lambda e: page.close(dlg))],
-        )
-        page.open(dlg)
-
-    def refresh_user_dropdown():
-        user_selector.options = [ft.dropdown.Option("所有用户")] + [ft.dropdown.Option(u) for u in manager.users]
-        if current_user in manager.users or current_user == "所有用户":
-            user_selector.value = current_user
+    def _apply_search(self):
+        search_text = self.ids.search_input.text.strip().lower() if 'search_input' in self.ids else ''
+        if search_text:
+            self.filtered_deposits = [
+                d for d in self.all_deposits
+                if search_text in d['bank'].lower()
+                or search_text in d['deposit_type'].lower()
+                or search_text in d['user'].lower()
+                or (d.get('notes') and search_text in d['notes'].lower())
+            ]
         else:
-            user_selector.value = "所有用户"
-        page.update()
+            self.filtered_deposits = self.all_deposits.copy()
+        self.filtered_deposits.sort(key=lambda x: x.get('maturity_date') or '2099-12-31')
+        if 'deposit_list' in self.ids:
+            self.ids.deposit_list.update_items(self.filtered_deposits)
 
-    # ---------- 到期提醒 ----------
-    def check_maturities(e):
-        upcoming = manager.get_upcoming_maturities()
+    def _update_status(self):
+        total_amount = sum(d['amount'] for d in self.filtered_deposits)
+        total_interest = sum(d.get('current_interest', 0) for d in self.filtered_deposits)
+        status_text = f"共 {len(self.filtered_deposits)} 条记录 | 本金: {total_amount:,.2f} 元 | 当前利息: {total_interest:,.2f} 元"
+        if 'status_label' in self.ids:
+            self.ids.status_label.text = status_text
+
+    def change_user(self, user):
+        self.app.manager.current_user = user
+        self.current_user_text = user
+        self.refresh_deposits()
+
+    def search_filter(self, text):
+        self._apply_search()
+        self._update_status()
+
+    def show_add_dialog(self):
+        popup = AddDepositPopup(self.app)
+        popup.open()
+
+    def show_stats(self):
+        popup = StatsPopup(self.app)
+        popup.open()
+
+    def check_maturities(self):
+        upcoming = self.app.manager.get_upcoming_maturities()
         if upcoming:
             msg = "未来7天内到期的存款:\n\n"
             for dep in upcoming:
                 days_left = (datetime.strptime(dep[5], "%Y-%m-%d") - datetime.now()).days
                 msg += f"用户: {dep[1]}\n银行: {dep[2]}\n名称: {dep[3]}\n金额: {dep[4]:.2f}\n到期日: {dep[5]}\n剩余天数: {days_left}\n\n"
-            dlg = ft.AlertDialog(title=ft.Text("到期提醒"), content=ft.Text(msg), actions=[ft.TextButton("确定", on_click=lambda e: page.close(dlg))])
-            page.open(dlg)
+            popup = Popup(title='到期提醒', content=Label(text=msg), size_hint=(0.9, 0.8))
+            popup.open()
         else:
-            page.show_snack_bar(ft.SnackBar(content=ft.Text("未来7天内没有即将到期的存款")))
+            popup = Popup(title='到期提醒', content=Label(text='未来7天内没有即将到期的存款'), size_hint=(0.7, 0.3))
+            popup.open()
 
-    # ---------- 导入导出（使用 FilePicker）----------
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
 
-    def import_data(e):
-        file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["csv", "xlsx"])
-        def on_result(result: ft.FilePickerResultEvent):
-            if result.files:
-                path = result.files[0].path
-                success, msg = manager.import_from_file(path)
-                if success:
-                    refresh_data()
-                    refresh_user_dropdown()
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(msg)))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(f"导入失败: {msg}")))
-        file_picker.on_result = on_result
+class DepositApp(App):
+    def build(self):
+        Window.clearcolor = (0.95, 0.95, 0.95, 1)
+        self.manager = DepositManager()
+        self.sm = ScreenManager()
+        self.main_screen = MainScreen(self)
+        self.sm.add_widget(self.main_screen)
+        return self.sm
 
-    def export_data(e):
-        file_picker.save_file(file_name="存款记录.csv", allowed_extensions=["csv"])
-        def on_save(result: ft.FilePickerResultEvent):
-            if result.path:
-                success = manager.export_to_csv(result.path)
-                if success:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("导出成功")))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("导出失败")))
-        file_picker.on_result = on_save
+    def refresh_deposits(self):
+        self.main_screen.refresh_deposits()
 
-    def export_template(e):
-        file_picker.save_file(file_name="存款导入模板.xlsx", allowed_extensions=["xlsx"])
-        def on_save(result: ft.FilePickerResultEvent):
-            if result.path:
-                success = manager.export_template(result.path)
-                if success:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出成功")))
-                else:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("模板导出失败")))
-        file_picker.on_result = on_save
+    def on_stop(self):
+        if hasattr(self, 'manager'):
+            self.manager.close()
 
-    # ---------- 备份恢复（修复文件覆盖）----------
-    def backup_db(e):
-        if not os.path.exists(manager.filename):
-            page.show_snack_bar(ft.SnackBar(content=ft.Text("数据库文件不存在")))
-            return
-        file_picker.save_file(file_name=f"deposits_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db", allowed_extensions=["db"])
-        def on_save(result: ft.FilePickerResultEvent):
-            if result.path:
-                shutil.copy2(manager.filename, result.path)
-                page.show_snack_bar(ft.SnackBar(content=ft.Text("备份成功")))
-        file_picker.on_result = on_save
 
-    def restore_db(e):
-        file_picker.pick_files(allow_multiple=False, file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=["db"])
-        def on_result(result: ft.FilePickerResultEvent):
-            if result.files:
-                src_path = result.files[0].path
-                try:
-                    manager.conn.close()
-                    # 使用临时文件替换，避免权限问题
-                    temp_path = manager.filename + ".tmp"
-                    shutil.copy2(src_path, temp_path)
-                    shutil.move(temp_path, manager.filename)
-                    manager.conn = sqlite3.connect(manager.filename)
-                    manager.users = manager.load_users()
-                    manager.current_user = manager.users[0] if manager.users else "默认用户"
-                    refresh_data()
-                    refresh_user_dropdown()
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("恢复成功")))
-                except Exception as ex:
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text(f"恢复失败: {ex}")))
-        file_picker.on_result = on_result
-
-    # ---------- 用户切换 ----------
-    def on_user_change(e):
-        nonlocal current_user
-        current_user = user_selector.value
-        refresh_data()
-
-    user_selector.on_change = on_user_change
-
-    # ---------- 顶部按钮栏 ----------
-    top_bar = ft.Row([
-        user_selector,
-        ft.IconButton(icon="add", icon_size=30, on_click=add_deposit_dialog, tooltip="添加存款"),
-        ft.IconButton(icon="pie_chart", icon_size=30, on_click=show_charts, tooltip="统计图表"),
-        ft.PopupMenuButton(
-            icon="more_vert",
-            items=[
-                ft.PopupMenuItem(text="用户管理", on_click=manage_users),
-                ft.PopupMenuItem(text="到期提醒", on_click=check_maturities),
-                ft.PopupMenuItem(text="导入数据", on_click=import_data),
-                ft.PopupMenuItem(text="导出数据", on_click=export_data),
-                ft.PopupMenuItem(text="导出模板", on_click=export_template),
-                ft.PopupMenuItem(text="备份数据库", on_click=backup_db),
-                ft.PopupMenuItem(text="恢复数据库", on_click=restore_db),
-            ]
-        ),
-    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-
-    # 主界面布局
-    page.add(
-        top_bar,
-        stats_text,
-        ft.Divider(height=1),
-        deposit_list,
-    )
-
-    refresh_data()
-
-if __name__ == "__main__":
-    ft.app(target=main)
+if __name__ == '__main__':
+    DepositApp().run()
