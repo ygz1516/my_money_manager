@@ -1,0 +1,26 @@
+name: Docker Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: kivy/buildozer:latest  # 官方 Buildozer Docker 镜像，Python 3.9
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build APK
+        run: |
+          # 在容器内执行 buildozer
+          buildozer android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-apk
+          path: ./bin/*.apk
