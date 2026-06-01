@@ -9,14 +9,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: kivy/buildozer:latest  # 官方 Buildozer Docker 镜像，Python 3.9
+      image: kivy/buildozer:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build APK
         run: |
-          # 在容器内执行 buildozer
           buildozer android debug
 
       - name: Upload APK
