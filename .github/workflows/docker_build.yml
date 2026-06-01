@@ -28,9 +28,16 @@ jobs:
           pip install --upgrade pip
           pip install cython buildozer
 
-      - name: Build APK
+      - name: Clean previous build artifacts (optional)
         run: |
-          # 自动回答 yes 并强制使用 Python 3.11
+          rm -rf .buildozer
+          rm -rf ~/.buildozer
+
+      - name: Build APK
+        env:
+          # 强制 p4a 使用 Python 3.11 作为 host 和 target
+          PYTHONFORANDROID_PYTHON_VERSION: 3.11
+        run: |
           yes | buildozer android debug
 
       - name: Upload APK
