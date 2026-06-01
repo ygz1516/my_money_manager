@@ -1,0 +1,14 @@
+tasks:
+  - name: Setup Buildozer
+    before: |
+      sudo apt update
+      sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config automake libffi-dev build-essential wget curl
+    init: |
+      pip install --upgrade pip
+      pip install cython buildozer
+    command: |
+      echo "环境准备完成！现在请运行: buildozer android debug"
+
+vscode:
+  extensions:
+    - ms-python.python
