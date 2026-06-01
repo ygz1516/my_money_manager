@@ -9,7 +9,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: kivy/buildozer:1.0.0   # 改用 1.0.0 版本，内置 Python 3.11
+      image: kivy/buildozer:latest
+      env:
+        PYTHONFORANDROID_PYTHON_VERSION: 3.11
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
