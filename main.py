@@ -1,6 +1,6 @@
 """
-存款管理系统 - Kivy 移动端版本
-将原始 Tkinter 应用迁移到 Kivy 框架，可打包为 Android APK
+存款管理系统 - Kivy 移动端版本（轻量级，支持备份/恢复）
+移除 matplotlib/numpy，使用 CSV 与电脑版数据互通
 """
 
 import sqlite3
@@ -12,7 +12,6 @@ from collections import defaultdict
 import os
 import shutil
 
-# Kivy 相关导入
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen
@@ -24,28 +23,20 @@ from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.uix.gridlayout import GridLayout
-from kivy.uix.recycleview import RecycleView
-from kivy.properties import StringProperty, NumericProperty, ListProperty, ObjectProperty
+from kivy.properties import StringProperty, NumericProperty, ListProperty
 from kivy.metrics import dp
 from kivy.core.window import Window
 from kivy.clock import Clock
 
-# 图表支持 (Kivy 中使用 matplotlib)
+# Android 存储权限（运行时）
 try:
-    import matplotlib
-    matplotlib.use('Agg')  # 非交互式后端，移动端必须
-    import matplotlib.pyplot as plt
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from kivy.uix.image import Image
-    import numpy as np
-    from matplotlib.patches import Patch
-    from matplotlib.dates import DateFormatter
-    MATPLOTLIB_AVAILABLE = True
+    from android.permissions import request_permissions, Permission
+    from android.storage import primary_external_storage_path
+    ANDROID = True
 except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-    print("警告: matplotlib 未安装，图表功能不可用")
+    ANDROID = False
 
-# 金融计算核心类 - 从原始代码迁移，业务逻辑完全复用
+# ==================== 金融计算核心类（不变） ====================
 class DepositManager:
     def __init__(self, filename="deposits.db"):
         self.filename = filename
@@ -87,13 +78,11 @@ class DepositManager:
             FOREIGN KEY(deposit_id) REFERENCES deposits(id) ON DELETE CASCADE
         )
         """)
-        # 兼容原数据库：如果已有存款表但缺少字段，进行升级
         cursor.execute("PRAGMA table_info(deposits)")
         columns = [col[1] for col in cursor.fetchall()]
         if 'is_unlocked' not in columns:
             cursor.execute("ALTER TABLE deposits ADD COLUMN is_unlocked INTEGER DEFAULT 0")
         self.conn.commit()
-        # 清理可能遗留的无效用户
         cursor.execute("DELETE FROM users WHERE user_name IS NULL OR user_name = ''")
         self.conn.commit()
 
@@ -101,9 +90,7 @@ class DepositManager:
         cursor = self.conn.cursor()
         cursor.execute("SELECT user_name FROM users ORDER BY id")
         rows = cursor.fetchall()
-        if not rows:
-            return []
-        return [row[0] for row in rows]
+        return [row[0] for row in rows] if rows else []
 
     def add_user(self, user_name):
         if not user_name or user_name in self.load_users():
@@ -197,22 +184,6 @@ class DepositManager:
         cursor = self.conn.cursor()
         cursor.execute("SELECT id, effective_date, interest_rate FROM rate_history WHERE deposit_id=? ORDER BY effective_date", (deposit_id,))
         return cursor.fetchall()
-
-    def add_rate_change(self, deposit_id, effective_date, interest_rate):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id FROM rate_history WHERE deposit_id=? AND effective_date=?", (deposit_id, effective_date))
-        if cursor.fetchone():
-            return False, "该日期已存在利率记录"
-        cursor.execute("INSERT INTO rate_history (deposit_id, effective_date, interest_rate) VALUES (?,?,?)",
-                       (deposit_id, effective_date, interest_rate))
-        self.conn.commit()
-        return True, "利率历史已添加"
-
-    def delete_rate_change(self, rate_id):
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM rate_history WHERE id=?", (rate_id,))
-        self.conn.commit()
-        return True, "已删除"
 
     def calculate_interest(self, start_date_str, maturity_date_str, amount, rate, interest_type="simple",
                            as_of_date=None, deposit_id=None):
@@ -314,6 +285,78 @@ class DepositManager:
         """, (today, target_date))
         return cursor.fetchall()
 
+    def export_to_csv(self, filepath):
+        """导出当前用户的所有存款到CSV文件"""
+        deposits = self.load_deposits(self.current_user)
+        if not deposits:
+            return False, "没有数据可导出"
+        with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(['银行', '存款类型', '金额', '起始日期', '到期日期', '利率(%)', '计息类型', '备注'])
+            for d in deposits:
+                writer.writerow([
+                    d['bank'], d['deposit_type'], d['amount'],
+                    d['start_date'] or '', d['maturity_date'] or '',
+                    d['interest_rate'] if d['interest_rate'] is not None else '',
+                    d['interest_type'], d['notes']
+                ])
+        return True, f"已导出 {len(deposits)} 条记录"
+
+    def import_from_csv(self, filepath):
+        """从CSV文件导入存款（追加模式，自动跳过完全相同的记录）"""
+        # 检测编码
+        with open(filepath, 'rb') as f:
+            raw = f.read(10000)
+            encoding = chardet.detect(raw)['encoding'] or 'utf-8'
+        added = 0
+        skipped = 0
+        with open(filepath, 'r', encoding=encoding) as f:
+            reader = csv.reader(f)
+            header = next(reader, None)  # 跳过标题行
+            for row in reader:
+                if len(row) < 8:
+                    continue
+                bank, dep_type, amount_str, start_date, maturity_date, rate_str, int_type, notes = row
+                try:
+                    amount = float(amount_str) if amount_str else 0.0
+                    rate = float(rate_str) if rate_str else None
+                except:
+                    continue
+                if amount <= 0:
+                    continue
+                # 跳过空银行或类型
+                if not bank.strip() or not dep_type.strip():
+                    continue
+                # 构造存款对象
+                deposit = {
+                    'user': self.current_user,
+                    'bank': bank.strip(),
+                    'deposit_type': dep_type.strip(),
+                    'amount': amount,
+                    'start_date': start_date.strip() if start_date.strip() else None,
+                    'maturity_date': maturity_date.strip() if maturity_date.strip() else None,
+                    'interest_rate': rate,
+                    'interest_type': int_type.strip() if int_type.strip() in ['simple','compound'] else 'simple',
+                    'notes': notes.strip(),
+                    'is_unlocked': 0
+                }
+                # 简单去重：检查是否已存在完全相同（银行+类型+金额+起始日期+到期日期）
+                existing = self.load_deposits(self.current_user)
+                duplicate = any(
+                    e['bank'] == deposit['bank'] and
+                    e['deposit_type'] == deposit['deposit_type'] and
+                    e['amount'] == deposit['amount'] and
+                    e['start_date'] == deposit['start_date'] and
+                    e['maturity_date'] == deposit['maturity_date']
+                    for e in existing
+                )
+                if duplicate:
+                    skipped += 1
+                    continue
+                self.add_deposit(deposit)
+                added += 1
+        return True, f"导入完成: 新增 {added} 条, 跳过重复 {skipped} 条"
+
     def close(self):
         if self.conn:
             self.conn.close()
@@ -350,7 +393,7 @@ class DepositManager:
         return None
 
 
-# Kivy 界面定义 (KV 语言内容在 deposit.kv 文件中，但这里需要加载)
+# ==================== Kivy 界面组件 ====================
 class DepositItem(BoxLayout):
     bank = StringProperty('')
     deposit_type = StringProperty('')
@@ -395,7 +438,6 @@ class AddDepositPopup(Popup):
 
     def _build_content(self):
         layout = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
-        # 持有人
         layout.add_widget(Label(text='存款持有人:', size_hint_y=None, height=dp(30)))
         self.user_input = TextInput(size_hint_y=None, height=dp(40))
         if self.deposit:
@@ -403,55 +445,55 @@ class AddDepositPopup(Popup):
         else:
             self.user_input.text = self.app.manager.current_user
         layout.add_widget(self.user_input)
-        # 银行
+
         layout.add_widget(Label(text='银行名称:', size_hint_y=None, height=dp(30)))
         self.bank_input = TextInput(size_hint_y=None, height=dp(40))
         if self.deposit:
             self.bank_input.text = self.deposit['bank']
         layout.add_widget(self.bank_input)
-        # 存款类型
+
         layout.add_widget(Label(text='存款类型:', size_hint_y=None, height=dp(30)))
         self.type_input = TextInput(size_hint_y=None, height=dp(40))
         if self.deposit:
             self.type_input.text = self.deposit['deposit_type']
         layout.add_widget(self.type_input)
-        # 金额
+
         layout.add_widget(Label(text='存款金额(元):', size_hint_y=None, height=dp(30)))
         self.amount_input = TextInput(size_hint_y=None, height=dp(40), input_filter='float')
         if self.deposit:
             self.amount_input.text = str(self.deposit['amount'])
         layout.add_widget(self.amount_input)
-        # 起始日期
+
         layout.add_widget(Label(text='起始日期 (YYYY-MM-DD):', size_hint_y=None, height=dp(30)))
         self.start_date_input = TextInput(size_hint_y=None, height=dp(40))
         if self.deposit and self.deposit.get('start_date'):
             self.start_date_input.text = self.deposit['start_date']
         layout.add_widget(self.start_date_input)
-        # 到期日期
+
         layout.add_widget(Label(text='到期日期 (YYYY-MM-DD):', size_hint_y=None, height=dp(30)))
         self.maturity_date_input = TextInput(size_hint_y=None, height=dp(40))
         if self.deposit and self.deposit.get('maturity_date'):
             self.maturity_date_input.text = self.deposit['maturity_date']
         layout.add_widget(self.maturity_date_input)
-        # 利率
+
         layout.add_widget(Label(text='利率(%):', size_hint_y=None, height=dp(30)))
         self.rate_input = TextInput(size_hint_y=None, height=dp(40), input_filter='float')
         if self.deposit and self.deposit.get('interest_rate'):
             self.rate_input.text = str(self.deposit['interest_rate'])
         layout.add_widget(self.rate_input)
-        # 计息类型
+
         layout.add_widget(Label(text='计息类型:', size_hint_y=None, height=dp(30)))
         self.interest_type_spinner = Spinner(text='simple', values=['simple', 'compound'], size_hint_y=None, height=dp(40))
         if self.deposit:
             self.interest_type_spinner.text = self.deposit['interest_type']
         layout.add_widget(self.interest_type_spinner)
-        # 备注
+
         layout.add_widget(Label(text='备注:', size_hint_y=None, height=dp(30)))
         self.notes_input = TextInput(size_hint_y=None, height=dp(60))
         if self.deposit:
             self.notes_input.text = self.deposit['notes']
         layout.add_widget(self.notes_input)
-        # 按钮
+
         btn_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
         save_btn = Button(text='保存')
         save_btn.bind(on_release=self.save)
@@ -521,36 +563,33 @@ class StatsPopup(Popup):
     def _build_content(self):
         stats = self.app.manager.get_deposit_stats(self.app.manager.current_user)
         layout = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
-        # 总金额
         total_frame = BoxLayout(size_hint_y=None, height=dp(40))
         total_frame.add_widget(Label(text='总存款金额:', size_hint_x=0.5))
         total_frame.add_widget(Label(text=f"{stats['total_amount']:,.2f} 元", size_hint_x=0.5))
         layout.add_widget(total_frame)
-        # 当前利息
+
         interest_frame = BoxLayout(size_hint_y=None, height=dp(40))
         interest_frame.add_widget(Label(text='当前总利息:', size_hint_x=0.5))
         interest_frame.add_widget(Label(text=f"{stats['total_current_interest']:,.2f} 元", size_hint_x=0.5))
         layout.add_widget(interest_frame)
-        # 按持有人
+
         layout.add_widget(Label(text='按持有人统计:', size_hint_y=None, height=dp(30), bold=True))
         for holder, amount in stats['by_holder'].items():
             line = BoxLayout(size_hint_y=None, height=dp(30))
             line.add_widget(Label(text=holder, size_hint_x=0.5))
             line.add_widget(Label(text=f"{amount:,.2f} 元", size_hint_x=0.5))
             layout.add_widget(line)
-        # 按银行
+
         layout.add_widget(Label(text='按银行统计:', size_hint_y=None, height=dp(30), bold=True))
         for bank, amount in stats['by_bank'].items():
             line = BoxLayout(size_hint_y=None, height=dp(30))
             line.add_widget(Label(text=bank[:15], size_hint_x=0.5))
             line.add_widget(Label(text=f"{amount:,.2f} 元", size_hint_x=0.5))
             layout.add_widget(line)
+
         scroll = ScrollView()
         scroll.add_widget(layout)
         self.content = scroll
-
-    def on_dismiss(self):
-        pass
 
 
 class MainScreen(Screen):
@@ -559,13 +598,13 @@ class MainScreen(Screen):
 
     def __init__(self, app, **kwargs):
         super().__init__(**kwargs)
-        self.app = app                       # 关键修复
+        self.app = app
         self.all_deposits = []
         self.filtered_deposits = []
-        self._update_user_list()
 
     def on_kv_post(self, base_widget):
         self.refresh_deposits()
+        self._update_user_list()
 
     def _update_user_list(self):
         users = self.app.manager.load_users()
@@ -649,6 +688,68 @@ class MainScreen(Screen):
         else:
             popup = Popup(title='到期提醒', content=Label(text='未来7天内没有即将到期的存款'), size_hint=(0.7, 0.3))
             popup.open()
+
+    # ========== 备份/恢复功能 ==========
+    def backup_data(self):
+        """备份当前用户数据到 Downloads/存款备份_日期.csv"""
+        if ANDROID:
+            # 请求存储权限
+            request_permissions([Permission.WRITE_EXTERNAL_STORAGE, Permission.READ_EXTERNAL_STORAGE])
+            # 获取外部存储路径（通常是 /storage/emulated/0）
+            base_path = primary_external_storage_path()
+            if not base_path:
+                base_path = "/storage/emulated/0"
+            backup_dir = os.path.join(base_path, "Download")
+        else:
+            # 桌面测试时备份到当前目录
+            backup_dir = os.path.join(os.getcwd(), "backup")
+        os.makedirs(backup_dir, exist_ok=True)
+        filename = f"存款备份_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        full_path = os.path.join(backup_dir, filename)
+        success, msg = self.app.manager.export_to_csv(full_path)
+        if success:
+            self._show_info("备份成功", f"文件已保存到:\n{full_path}\n\n您可以通过文件管理器复制到电脑。")
+        else:
+            self._show_error("备份失败", msg)
+
+    def restore_data(self):
+        """从CSV文件恢复数据（需用户选择文件）"""
+        # 由于Kivy没有内置文件选择器，使用简单提示手动输入路径（或可集成 plyer 的 FileChooser）
+        # 为简化，弹窗让用户手动输入完整路径
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+        content.add_widget(Label(text='请输入CSV文件的完整路径:', size_hint_y=None, height=dp(40)))
+        path_input = TextInput(size_hint_y=None, height=dp(40), hint_text='例如: /storage/emulated/0/Download/存款备份.csv')
+        content.add_widget(path_input)
+        btn_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        confirm_btn = Button(text='恢复')
+        cancel_btn = Button(text='取消')
+        popup = Popup(title='恢复数据', content=content, size_hint=(0.9, 0.4))
+        def do_restore(instance):
+            path = path_input.text.strip()
+            if not path or not os.path.exists(path):
+                self._show_error("恢复失败", "文件不存在，请检查路径")
+                return
+            success, msg = self.app.manager.import_from_csv(path)
+            if success:
+                popup.dismiss()
+                self._show_info("恢复成功", msg)
+                self.refresh_deposits()
+            else:
+                self._show_error("恢复失败", msg)
+        confirm_btn.bind(on_release=do_restore)
+        cancel_btn.bind(on_release=popup.dismiss)
+        btn_layout.add_widget(confirm_btn)
+        btn_layout.add_widget(cancel_btn)
+        content.add_widget(btn_layout)
+        popup.open()
+
+    def _show_info(self, title, msg):
+        popup = Popup(title=title, content=Label(text=msg), size_hint=(0.8, 0.4))
+        popup.open()
+
+    def _show_error(self, title, msg):
+        popup = Popup(title=title, content=Label(text=msg), size_hint=(0.8, 0.4))
+        popup.open()
 
 
 class DepositApp(App):
