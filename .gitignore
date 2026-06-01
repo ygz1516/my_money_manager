@@ -1,32 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*.so
-.Python
-venv/
-env/
-ENV/
-.venv
+tasks:
+  - name: Setup Buildozer
+    before: |
+      sudo apt update
+      sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config automake libffi-dev build-essential wget curl
+    init: |
+      pip install --upgrade pip
+      pip install cython buildozer
+    command: |
+      echo "准备就绪，运行 buildozer android debug 即可打包"
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Kivy / Android build outputs
-bin/
-build/
-*.apk
-*.aab
-
-# Database (optional, if you want to keep local db but not in git)
-*.db
-*.sqlite3
-
-# MacOS
-.DS_Store
-
-# PyCharm project files
-.idea/
-*.iml
+vscode:
+  extensions:
+    - ms-python.python
