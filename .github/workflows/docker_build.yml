@@ -9,17 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: kivy/buildozer:latest
-      env:
-        PYTHONFORANDROID_PYTHON_VERSION: 3.11
+      image: kivy/buildozer:2.0.0   # 使用已知存在的固定版本
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build APK
         run: |
-          export BUILDOZER_RUN_AS_ROOT=1
-          buildozer android debug
+          # 强制非交互模式，避免 EOFError
+          yes | buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
