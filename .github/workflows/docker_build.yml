@@ -8,16 +8,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: kivy/buildozer:2.0.0   # 使用已知存在的固定版本
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build APK
-        run: |
-          # 强制非交互模式，避免 EOFError
-          yes | buildozer android debug
+        uses: ArtemSBulgakov/buildozer-action@v1
+        with:
+          workdir: .  # 你的项目根目录
+          buildozer_version: stable
+          command: android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
