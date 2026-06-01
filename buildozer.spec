@@ -9,7 +9,6 @@ requirements = python3==3.11.9,kivy==2.3.0,chardet
 orientation = portrait
 fullscreen = 0
 
-# Android 配置
 android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.api = 30
 android.minapi = 21
