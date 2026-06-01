@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Docker Build APK
 
 on:
   push:
@@ -8,35 +8,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [arm64-v8a, armeabi-v7a]
-
+    container:
+      image: kivy/buildozer:latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Build APK
+        run: |
+          export BUILDOZER_RUN_AS_ROOT=1
+          buildozer android debug
 
-    - name: Install system dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
-
-    - name: Install buildozer and cython
-      run: |
-        pip install --upgrade pip
-        pip install buildozer cython
-
-    - name: Build APK with buildozer
-      run: |
-        buildozer android debug
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: my-apk-${{ matrix.arch }}
-        path: ./bin/*.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-apk
+          path: ./bin/*.apk
