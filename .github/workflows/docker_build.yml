@@ -9,14 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: kivy/buildozer:latest
+      image: kivy/buildozer:1.0.0   # 改用 1.0.0 版本，内置 Python 3.11
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build APK
         run: |
-          yes | buildozer android debug
+          export BUILDOZER_RUN_AS_ROOT=1
+          buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
