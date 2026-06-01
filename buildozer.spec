@@ -5,7 +5,7 @@ package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,txt,db
 version = 1.0.0
-requirements = python3==3.11.9,kivy==2.3.0,chardet
+requirements = python3,kivy==2.3.0,chardet
 orientation = portrait
 fullscreen = 0
 
