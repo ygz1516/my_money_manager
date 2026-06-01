@@ -8,7 +8,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,txt,db,json
 
 version = 0.1
-requirements = python3,kivy==2.3.0,matplotlib,pandas,openpyxl,chardet,numpy
+requirements = python3,kivy==2.3.0,kivy-garden.graph,tablib,cchardet
 
 orientation = portrait
 osx.python_version = 3
@@ -16,11 +16,11 @@ osx.kivy_version = 2.3.0
 fullscreen = 0
 
 android.accept_sdk_license = True
-android.minapi = 21
+android.minapi = 31
 android.api = 31
 android.ndk = 25c
 android.sdk = 33
-android.ndk_api = 21
+android.ndk_api = 31
 
 android.archs = arm64-v8a, armeabi-v7a
 
