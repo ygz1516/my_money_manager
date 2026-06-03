@@ -1,4 +1,4 @@
-name: Build APK on Bare Ubuntu
+name: Build APK with patrickloeber/buildozer
 
 on:
   push:
@@ -8,30 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    container:
+      image: patrickloeber/buildozer:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install System Dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y \
-            git zip unzip openjdk-17-jdk \
-            autoconf libtool pkg-config automake \
-            libffi-dev build-essential wget curl
-
-      - name: Install Buildozer & Cython
-        run: |
-          pip install --upgrade pip
-          pip install cython buildozer
-
-      - name: Build Android APK
+      - name: Build APK
         run: |
           yes | buildozer android debug
 
