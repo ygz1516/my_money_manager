@@ -1,4 +1,4 @@
-name: Docker Build APK
+name: Build APK (native)
 
 on:
   push:
@@ -8,11 +8,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: kivy/buildozer:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config automake libffi-dev build-essential wget curl
+          pip install --upgrade pip
+          pip install cython buildozer
 
       - name: Build APK
         run: |
