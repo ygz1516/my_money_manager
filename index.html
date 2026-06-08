@@ -341,49 +341,12 @@
             return str;
         };
         const csvContent = csvLines.map(row => row.map(cell => escapeCSV(cell)).join(',')).join('\n');
-
-        // 1. 尝试使用 Cordova 文件插件（如果存在）
-        if (window.cordova && window.cordova.file) {
-            try {
-                // 请求存储权限 (Android 6+)
-                if (window.cordova.plugins && window.cordova.plugins.permissions) {
-                    await new Promise((resolve, reject) => {
-                        window.cordova.plugins.permissions.requestPermission(
-                            window.cordova.plugins.permissions.WRITE_EXTERNAL_STORAGE,
-                            (status) => status.hasPermission ? resolve() : reject('存储权限被拒绝'),
-                            reject
-                        );
-                    });
-                }
-                // 获取外部存储的 Download 目录
-                const downloadDir = window.cordova.file.externalRootDirectory + 'Download/';
-                const fileName = `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
-                const fileEntry = await new Promise((resolve, reject) => {
-                    window.resolveLocalFileSystemURL(downloadDir, (dirEntry) => {
-                        dirEntry.getFile(fileName, { create: true, exclusive: false }, resolve, reject);
-                    }, reject);
-                });
-                await new Promise((resolve, reject) => {
-                    fileEntry.createWriter((writer) => {
-                        writer.onwriteend = resolve;
-                        writer.onerror = reject;
-                        writer.write(new Blob(["\uFEFF" + csvContent], { type: 'text/csv' }));
-                    }, reject);
-                });
-                alert(`备份成功！\n文件已保存到 Download 文件夹\n文件名：${fileName}`);
-                return true;
-            } catch (err) {
-                console.error('Cordova 保存失败:', err);
-                // 降级到 Web 下载
-            }
-        }
-
-        // 2. 降级方案：使用 Blob + 下载链接（用于网页测试）
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        // 创建下载链接并触发点击
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.href = url;
-        link.setAttribute('download', `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`);
+        link.download = `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
