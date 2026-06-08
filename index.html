@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 · 增强备份版</title>
+    <title>存款管家 · 可见备份版</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
@@ -33,7 +33,7 @@
         .modal-content { background: white; width: 90%; max-width: 500px; max-height: 85%; border-radius: 28px; padding: 20px; overflow-y: auto; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .badge { background: #3498db20; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; }
-        .toast-msg { position: fixed; bottom: 30px; left: 20px; right: 20px; background: rgba(0,0,0,0.8); color: white; text-align: center; padding: 12px; border-radius: 40px; z-index: 2000; font-size: 0.85rem; transition: opacity 0.3s; pointer-events: none; }
+        .toast-msg { position: fixed; bottom: 30px; left: 20px; right: 20px; background: rgba(0,0,0,0.85); color: white; text-align: center; padding: 12px; border-radius: 40px; z-index: 2000; font-size: 0.85rem; transition: opacity 0.3s; pointer-events: none; word-break: break-all; }
         @media (max-width: 600px) { body { padding: 10px; } .deposit-item { flex-direction: column; align-items: stretch; } .deposit-checkbox { align-self: flex-start; } .deposit-actions { margin-top: 8px; justify-content: flex-end; } }
     </style>
 </head>
@@ -61,7 +61,8 @@
         <div class="flex-between" style="margin-bottom: 12px;">
             <div>
                 <button id="addDepositBtn">➕ 新增存款</button>
-                <button id="backupBtn" class="secondary">💾 备份CSV (保存到手机)</button>
+                <button id="backupBtn" class="secondary">💾 备份CSV (保存到下载目录)</button>
+                <button id="openBackupFolderBtn" class="secondary" style="background:#6c5ce7;">📂 打开备份文件夹</button>
                 <label id="restoreLabel" class="btn-like secondary" style="display:inline-block; background:#2c3e50;">📂 恢复CSV
                     <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
                 </label>
@@ -235,11 +236,8 @@
         return upcoming;
     }
 
-    // ======================== 增强备份：Cordova File 写入外部存储 ========================
-    let isCordova = false;
-    let cordovaFilePluginReady = false;
-
-    function showToast(msg, duration = 3000) {
+    // ======================== 增强备份：写入公共下载目录 ========================
+    function showToast(msg, duration = 5000) {
         let toast = document.querySelector('.toast-msg');
         if (!toast) {
             toast = document.createElement('div');
@@ -251,25 +249,6 @@
         setTimeout(() => {
             toast.style.opacity = '0';
         }, duration);
-    }
-
-    // 请求存储权限 (Android)
-    async function requestStoragePermission() {
-        if (!window.cordova || !window.cordova.plugins || !window.cordova.plugins.permissions) {
-            return true; // 非 Cordova 环境，无需权限
-        }
-        const permissions = window.cordova.plugins.permissions;
-        return new Promise((resolve) => {
-            permissions.hasPermission(permissions.WRITE_EXTERNAL_STORAGE, (status) => {
-                if (status.hasPermission) {
-                    resolve(true);
-                } else {
-                    permissions.requestPermission(permissions.WRITE_EXTERNAL_STORAGE, (result) => {
-                        resolve(result.hasPermission);
-                    }, () => resolve(false));
-                }
-            }, () => resolve(false));
-        });
     }
 
     // 生成 CSV 内容
@@ -299,7 +278,7 @@
         return "\uFEFF" + csvContent;
     }
 
-    // 降级：浏览器下载方式
+    // 降级：浏览器下载
     function fallbackDownload(csvContent, filename) {
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -310,53 +289,62 @@
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showToast(`📁 已触发下载：${filename}（请到下载目录查看）`, 4000);
+        showToast(`📥 已触发下载：${filename}\n请到浏览器「下载」目录或通知栏查看`, 5000);
     }
 
-    // 主备份函数：优先使用 Cordova File 写入 /sdcard/存款管家备份/
+    // 请求存储权限（仅用于 Android 10 以下，但公共下载目录其实不需要；为了兼容旧版）
+    async function requestStoragePermission() {
+        if (!window.cordova || !window.cordova.plugins || !window.cordova.plugins.permissions) {
+            return true;
+        }
+        const permissions = window.cordova.plugins.permissions;
+        return new Promise((resolve) => {
+            permissions.hasPermission(permissions.WRITE_EXTERNAL_STORAGE, (status) => {
+                if (status.hasPermission) resolve(true);
+                else {
+                    permissions.requestPermission(permissions.WRITE_EXTERNAL_STORAGE, (result) => {
+                        resolve(result.hasPermission);
+                    }, () => resolve(false));
+                }
+            }, () => resolve(false));
+        });
+    }
+
+    // 主备份：写入 /sdcard/Download/存款管家备份/
     async function exportWithFilePlugin(user, deposits) {
         const csvContent = generateCSVBlob(user, deposits);
         const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
         const filename = `存款备份_${user}_${timestamp}.csv`;
         
-        // 检查是否在 Cordova 环境且有 File 插件
+        // 非 Cordova 环境，直接降级下载
         if (!window.cordova || !window.cordova.file) {
             fallbackDownload(csvContent, filename);
             return true;
         }
 
-        // 请求权限
-        const hasPerm = await requestStoragePermission();
-        if (!hasPerm) {
-            showToast('⚠️ 未获得存储权限，将使用浏览器下载方式', 3000);
-            fallbackDownload(csvContent, filename);
-            return false;
-        }
-
-        // 获取外部存储根目录（Android 上通常是 /storage/emulated/0）
-        const externalRoot = window.cordova.file.externalRootDirectory;
-        const backupDir = externalRoot + '存款管家备份/';
+        // 请求权限（可选，公共下载目录通常不需要严格权限，但为了兼容旧 Android 建议）
+        await requestStoragePermission();
         
-        // 创建目录（如果不存在）
+        const externalRoot = window.cordova.file.externalRootDirectory; // 通常是 /storage/emulated/0/
+        const backupDir = externalRoot + 'Download/存款管家备份/';
+        
         const resolveLocalFileSystemURL = window.resolveLocalFileSystemURL;
-        const requestFileSystem = window.requestFileSystem;
         
         return new Promise((resolve) => {
             resolveLocalFileSystemURL(backupDir, (dirEntry) => {
-                // 目录已存在，直接写文件
                 writeFileToDir(dirEntry, filename, csvContent, resolve);
             }, (err) => {
-                // 目录不存在，创建目录
-                resolveLocalFileSystemURL(externalRoot, (rootDir) => {
-                    rootDir.getDirectory('存款管家备份', { create: true }, (newDir) => {
+                // 目录不存在，先创建
+                resolveLocalFileSystemURL(externalRoot + 'Download/', (downloadDir) => {
+                    downloadDir.getDirectory('存款管家备份', { create: true }, (newDir) => {
                         writeFileToDir(newDir, filename, csvContent, resolve);
                     }, (err2) => {
-                        showToast('❌ 创建备份目录失败，使用下载方式', 3000);
+                        showToast('❌ 创建备份目录失败，使用浏览器下载', 3000);
                         fallbackDownload(csvContent, filename);
                         resolve(false);
                     });
                 }, (err2) => {
-                    showToast('❌ 无法访问外部存储，使用下载方式', 3000);
+                    showToast('❌ 无法访问 Download 目录，使用浏览器下载', 3000);
                     fallbackDownload(csvContent, filename);
                     resolve(false);
                 });
@@ -369,7 +357,7 @@
             fileEntry.createWriter((writer) => {
                 writer.onwriteend = () => {
                     const fullPath = fileEntry.nativeURL || fileEntry.toURL();
-                    showToast(`✅ 备份成功！\n文件已保存到：${fullPath}`, 5000);
+                    showToast(`✅ 备份成功！\n文件已保存到：${fullPath}\n\n您可以通过「文件管理」→ 内部存储 → Download → 存款管家备份 找到它。`, 6000);
                     callback(true);
                 };
                 writer.onerror = (err) => {
@@ -391,7 +379,27 @@
         });
     }
 
-    // ======================== 导入CSV（保持不变） ========================
+    // 打开备份文件夹（尝试用 Intent）
+    function openBackupFolder() {
+        if (!window.cordova || !window.cordova.file) {
+            showToast('当前非 Cordova 环境，无法自动打开文件夹，请手动前往「文件管理」-> Download/存款管家备份', 4000);
+            return;
+        }
+        const backupDir = window.cordova.file.externalRootDirectory + 'Download/存款管家备份/';
+        // 使用 cordova-plugin-file-opener2 或简单提示
+        // 由于未预装该插件，我们使用通用方案：提示路径并尝试使用 Intent (仅部分设备支持)
+        if (window.plugins && window.plugins.fileOpener2) {
+            window.plugins.fileOpener2.open(backupDir, 'application/vnd.android.directory', {
+                error: (e) => {
+                    showToast(`无法自动打开文件夹，请手动前往：${backupDir}`, 4000);
+                }
+            });
+        } else {
+            showToast(`请打开手机「文件管理」应用，进入内部存储 → Download → 存款管家备份 文件夹。\n路径：${backupDir}`, 6000);
+        }
+    }
+
+    // ======================== 导入CSV ========================
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -432,8 +440,6 @@
                 let added = 0;
                 const affectedUsers = new Set();
                 const existingUsers = await getUsers();
-                const allExisting = await getAllDeposits();
-                const existingKeys = new Set(allExisting.map(d => `${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}|${d.rate}|${d.interestType}`));
                 for (let i = 1; i < lines.length; i++) {
                     const line = lines[i].trim();
                     if (!line) continue;
@@ -739,6 +745,7 @@
             const deposits = await getDeposits(currentUser);
             await exportWithFilePlugin(currentUser, deposits);
         });
+        document.getElementById('openBackupFolderBtn').addEventListener('click', openBackupFolder);
         const fileInput = document.getElementById('restoreFileInput');
         document.getElementById('restoreLabel').addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', async (e) => {
@@ -770,12 +777,10 @@
         bindEvents();
         checkReminders(false);
         setInterval(() => checkReminders(false), 24*3600*1000);
-        // 检测 Cordova 环境
         if (window.cordova) {
-            isCordova = true;
             document.addEventListener('deviceready', () => {
-                console.log('Cordova 设备就绪');
-                showToast('📱 存款管家已就绪，备份将保存到 /sdcard/存款管家备份/', 3000);
+                console.log('Cordova ready');
+                showToast('📱 存款管家已就绪，备份文件将保存到 Download/存款管家备份 文件夹', 4000);
             }, false);
         }
     })();
