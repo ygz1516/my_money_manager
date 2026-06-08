@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 - 用户管理版</title>
+    <title>存款管家 - 原生备份版</title>
     <style>
-        /* 样式保持不变，省略... 请使用原有样式 */
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -150,7 +149,7 @@
                 <label id="restoreLabel" class="btn-like secondary" style="display:inline-block; background:#2c3e50;">📂 恢复CSV
                     <input type="file" id="restoreFileInput" accept=".csv,text/csv,application/vnd.ms-excel" style="display:none;">
                 </label>
-                <span style="font-size:0.7rem; color:gray;">（点击后请在文件选择器中切换到“下载”或“文档”文件夹）</span>
+                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件，直接导入）</span>
             </div>
             <div class="batch-bar">
                 <label style="display: flex; align-items: center; gap: 6px;"><input type="checkbox" id="selectAllCheckbox"> 全选</label>
@@ -173,7 +172,7 @@
         "结构性存款", "通知存款", "理财产品", "货币基金", "股票基金", "其他"
     ];
 
-    // 存储层 (IndexedDB)
+    // ---------- 存储层 (IndexedDB) ----------
     const DB_NAME = 'DepositDB';
     const DB_VERSION = 1;
     let db = null;
@@ -221,7 +220,6 @@
     async function deleteUser(name) {
         const users = await getUsers();
         if (!users.includes(name)) return false;
-        // 检查是否有存款
         const deposits = await getDeposits(name);
         if (deposits.length > 0) {
             alert(`用户 ${name} 有 ${deposits.length} 笔存款，请先删除或转移存款后再删除用户。`);
@@ -331,8 +329,9 @@
         return upcoming;
     }
 
-    // 导出分享
+    // ========== 备份：使用 Cordova 文件插件写入 Download 目录 ==========
     async function exportToCSV(user, deposits) {
+        // 生成 CSV 内容
         const sorted = [...deposits].sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
         const rows = [];
         for (let i = 0; i < sorted.length; i++) {
@@ -355,31 +354,69 @@
             return str;
         };
         const csvContent = csvLines.map(row => row.map(cell => escapeCSV(cell)).join(',')).join('\n');
+        const fileName = `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
+
+        // 优先使用 Cordova 文件插件
+        if (window.cordova && window.cordova.file) {
+            try {
+                // 请求存储权限
+                if (window.cordova.plugins && window.cordova.plugins.permissions) {
+                    await new Promise((resolve, reject) => {
+                        window.cordova.plugins.permissions.requestPermission(
+                            window.cordova.plugins.permissions.WRITE_EXTERNAL_STORAGE,
+                            (status) => status.hasPermission ? resolve() : reject('存储权限被拒绝'),
+                            reject
+                        );
+                    });
+                }
+                // 获取 Download 目录
+                const downloadDir = window.cordova.file.externalRootDirectory + 'Download/';
+                const fileEntry = await new Promise((resolve, reject) => {
+                    window.resolveLocalFileSystemURL(downloadDir, (dirEntry) => {
+                        dirEntry.getFile(fileName, { create: true, exclusive: false }, resolve, reject);
+                    }, reject);
+                });
+                await new Promise((resolve, reject) => {
+                    fileEntry.createWriter((writer) => {
+                        writer.onwriteend = resolve;
+                        writer.onerror = reject;
+                        writer.write(new Blob(["\uFEFF" + csvContent], { type: 'text/csv' }));
+                    }, reject);
+                });
+                alert(`✅ 备份成功！\n文件已保存到 Download 文件夹\n文件名：${fileName}`);
+                return true;
+            } catch (err) {
+                console.error('Cordova 保存失败:', err);
+                alert('使用原生保存失败，尝试其他方式...');
+            }
+        }
+
+        // 降级：尝试系统分享
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv' });
-        const file = new File([blob], `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`, { type: 'text/csv' });
+        const file = new File([blob], fileName, { type: 'text/csv' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({ title: '存款备份', text: '请选择应用接收备份文件', files: [file] });
-                alert('备份文件已准备，请选择分享方式（微信/QQ/邮件等）保存或发送。');
+                alert('备份文件已准备，请选择分享方式保存。');
                 return true;
-            } catch (err) {
-                // 降级
-            }
+            } catch (err) {}
         }
+
+        // 最后降级：下载链接
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        alert('备份文件已触发下载，如果手机未找到文件，建议使用文件管理器搜索 .csv 文件或尝试再次备份并使用分享功能。');
+        alert('备份文件已触发下载，请检查手机 Download 文件夹。');
         return true;
     }
 
-    // 导入CSV：自动创建用户，不限制当前用户
-    async function importFromCSV(file, skipDuplicates = true) {
+    // ========== 导入：不再弹出确认框，直接导入 ==========
+    async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = async (e) => {
@@ -459,7 +496,8 @@
                     const notes = fields[colMap.notesIdx]?.trim() || '';
                     const deposit = { user: userName, bank, depositType, amount, startDate, maturityDate, rate, interestType, notes, isNotified: false, createdAt: new Date().toISOString() };
                     const key = keyFunc(deposit);
-                    if (skipDuplicates && existingKeys.has(key)) {
+                    // 默认跳过完全重复的记录（不弹窗）
+                    if (existingKeys.has(key)) {
                         skipped++;
                         duplicateList.push({ bank, depositType, amount, startDate, maturityDate });
                         continue;
@@ -513,7 +551,7 @@
         }
     }
 
-    // UI
+    // ---------- UI 状态 ----------
     let currentUser = '默认用户';
     let allDeposits = [];
     let duplicateIds = new Set();
@@ -732,16 +770,16 @@
         document.getElementById('fixDataBtn').addEventListener('click', fixDuplicateRecords);
         document.getElementById('searchInput').addEventListener('input', (e) => { currentFilter = e.target.value.toLowerCase(); updateList(); });
         document.getElementById('addDepositBtn').addEventListener('click', () => showDepositModal());
-        document.getElementById('backupBtn').addEventListener('click', async () => { const deposits = await getDeposits(currentUser); exportToCSV(currentUser, deposits); });
+        document.getElementById('backupBtn').addEventListener('click', async () => { const deposits = await getDeposits(currentUser); await exportToCSV(currentUser, deposits); });
         const fileInput = document.getElementById('restoreFileInput');
         document.getElementById('restoreLabel').addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', async (e) => {
             if (!e.target.files.length) return;
             try {
-                const skip = confirm("是否跳过完全重复的记录？\n（选择“确定”跳过重复，保留原有数据；选择“取消”则全部导入，可能会产生重复记录）");
-                const result = await importFromCSV(e.target.files[0], skip);
+                // 直接导入，不弹窗确认
+                const result = await importFromCSV(e.target.files[0]);
                 let msg = `导入完成：新增 ${result.added} 条，跳过 ${result.skipped} 条重复。`;
-                if (result.duplicateCount > 0) msg += `\n共有 ${result.duplicateCount} 条与已有记录重复。`;
+                if (result.duplicateCount > 0) msg += `\n共有 ${result.duplicateCount} 条与已有记录重复（已跳过）。`;
                 msg += `\n涉及用户：${result.users.join(', ')}`;
                 alert(msg);
                 await refreshUserSelector();
