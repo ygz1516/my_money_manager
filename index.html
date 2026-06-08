@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 - 原生备份版</title>
+    <title>存款管家 - 最终版</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -147,7 +147,7 @@
                 <button id="addDepositBtn">➕ 新增存款</button>
                 <button id="backupBtn" class="secondary">💾 备份CSV</button>
                 <label id="restoreLabel" class="btn-like secondary" style="display:inline-block; background:#2c3e50;">📂 恢复CSV
-                    <input type="file" id="restoreFileInput" accept=".csv,text/csv,application/vnd.ms-excel" style="display:none;">
+                    <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
                 </label>
                 <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件，直接导入）</span>
             </div>
@@ -222,7 +222,7 @@
         if (!users.includes(name)) return false;
         const deposits = await getDeposits(name);
         if (deposits.length > 0) {
-            alert(`用户 ${name} 有 ${deposits.length} 笔存款，请先删除或转移存款后再删除用户。`);
+            alert(`用户 ${name} 有 ${deposits.length} 笔存款，请先删除该用户下的所有存款后再删除用户。`);
             return false;
         }
         const tx = db.transaction('users', 'readwrite');
@@ -231,6 +231,7 @@
             const remaining = await getUsers();
             currentUser = remaining[0] || '默认用户';
             await refreshUserSelector();
+            await refreshData();
         }
         return true;
     }
@@ -329,9 +330,8 @@
         return upcoming;
     }
 
-    // ========== 备份：使用 Cordova 文件插件写入 Download 目录 ==========
+    // ========== 备份：使用 Cordova 文件插件 ==========
     async function exportToCSV(user, deposits) {
-        // 生成 CSV 内容
         const sorted = [...deposits].sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
         const rows = [];
         for (let i = 0; i < sorted.length; i++) {
@@ -356,7 +356,7 @@
         const csvContent = csvLines.map(row => row.map(cell => escapeCSV(cell)).join(',')).join('\n');
         const fileName = `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
 
-        // 优先使用 Cordova 文件插件
+        // 使用 Cordova 文件插件
         if (window.cordova && window.cordova.file) {
             try {
                 // 请求存储权限
@@ -369,7 +369,6 @@
                         );
                     });
                 }
-                // 获取 Download 目录
                 const downloadDir = window.cordova.file.externalRootDirectory + 'Download/';
                 const fileEntry = await new Promise((resolve, reject) => {
                     window.resolveLocalFileSystemURL(downloadDir, (dirEntry) => {
@@ -386,36 +385,17 @@
                 alert(`✅ 备份成功！\n文件已保存到 Download 文件夹\n文件名：${fileName}`);
                 return true;
             } catch (err) {
-                console.error('Cordova 保存失败:', err);
-                alert('使用原生保存失败，尝试其他方式...');
+                console.error(err);
+                alert('备份失败：' + (err.message || err));
+                return false;
             }
+        } else {
+            alert('当前环境不支持 Cordova 文件插件，无法直接保存。请使用其他方式。');
+            return false;
         }
-
-        // 降级：尝试系统分享
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv' });
-        const file = new File([blob], fileName, { type: 'text/csv' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({ title: '存款备份', text: '请选择应用接收备份文件', files: [file] });
-                alert('备份文件已准备，请选择分享方式保存。');
-                return true;
-            } catch (err) {}
-        }
-
-        // 最后降级：下载链接
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        alert('备份文件已触发下载，请检查手机 Download 文件夹。');
-        return true;
     }
 
-    // ========== 导入：不再弹出确认框，直接导入 ==========
+    // ========== 导入：一次选择，直接导入 ==========
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -639,7 +619,7 @@
             btn.addEventListener('click', async (e) => {
                 const userName = btn.dataset.user;
                 if (userName === currentUser) {
-                    if (!confirm(`确定要删除当前用户“${userName}”吗？删除后您将切换到其他用户。`)) return;
+                    if (!confirm(`确定要删除当前用户“${userName}”吗？删除前请确保该用户下无存款。`)) return;
                 } else {
                     if (!confirm(`确定要删除用户“${userName}”吗？该用户下的所有存款也会被删除！`)) return;
                 }
@@ -776,7 +756,6 @@
         fileInput.addEventListener('change', async (e) => {
             if (!e.target.files.length) return;
             try {
-                // 直接导入，不弹窗确认
                 const result = await importFromCSV(e.target.files[0]);
                 let msg = `导入完成：新增 ${result.added} 条，跳过 ${result.skipped} 条重复。`;
                 if (result.duplicateCount > 0) msg += `\n共有 ${result.duplicateCount} 条与已有记录重复（已跳过）。`;
