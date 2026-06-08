@@ -1,9 +1,7 @@
 name: Build Web APK
 
 on:
-  # 当你手动触发时运行
   workflow_dispatch:
-  # 或者当你修改 index.html 文件时自动运行
   push:
     paths:
       - 'index.html'
