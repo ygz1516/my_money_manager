@@ -12,34 +12,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install Cordova
         run: npm install -g cordova
-
       - name: Build APK
         run: |
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
           cp ../index.html www/index.html
-          # 只添加 Android 存储权限（不需要任何插件）
           sed -i '/<platform name="android">/a \        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n        </config-file>' config.xml
           cordova platform add android
           cordova build android
-
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
