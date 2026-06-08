@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 · 可见备份版</title>
+    <title>存款管家 · Cordova适配版</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
@@ -76,6 +76,9 @@
     </div>
     <div id="depositListContainer"></div>
 </div>
+
+<!-- Cordova 必须的脚本引用，构建时会自动注入实际文件 -->
+<script src="cordova.js"></script>
 
 <script>
     // ======================== 预设数据 ========================
@@ -236,7 +239,7 @@
         return upcoming;
     }
 
-    // ======================== 增强备份：写入公共下载目录 ========================
+    // ======================== 备份功能（支持 Cordova 和降级） ========================
     function showToast(msg, duration = 5000) {
         let toast = document.querySelector('.toast-msg');
         if (!toast) {
@@ -251,7 +254,6 @@
         }, duration);
     }
 
-    // 生成 CSV 内容
     function generateCSVBlob(user, deposits) {
         const sorted = [...deposits].sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
         const rows = [];
@@ -278,7 +280,7 @@
         return "\uFEFF" + csvContent;
     }
 
-    // 降级：浏览器下载
+    // 降级下载（用于非 Cordova 环境或失败时）
     function fallbackDownload(csvContent, filename) {
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -292,7 +294,7 @@
         showToast(`📥 已触发下载：${filename}\n请到浏览器「下载」目录或通知栏查看`, 5000);
     }
 
-    // 请求存储权限（仅用于 Android 10 以下，但公共下载目录其实不需要；为了兼容旧版）
+    // 请求存储权限（仅当需要时）
     async function requestStoragePermission() {
         if (!window.cordova || !window.cordova.plugins || !window.cordova.plugins.permissions) {
             return true;
@@ -310,31 +312,27 @@
         });
     }
 
-    // 主备份：写入 /sdcard/Download/存款管家备份/
-    async function exportWithFilePlugin(user, deposits) {
+    // Cordova 环境下写入文件到 Download/存款管家备份
+    async function exportWithCordova(user, deposits) {
         const csvContent = generateCSVBlob(user, deposits);
         const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
         const filename = `存款备份_${user}_${timestamp}.csv`;
         
-        // 非 Cordova 环境，直接降级下载
         if (!window.cordova || !window.cordova.file) {
             fallbackDownload(csvContent, filename);
-            return true;
+            return false;
         }
 
-        // 请求权限（可选，公共下载目录通常不需要严格权限，但为了兼容旧 Android 建议）
         await requestStoragePermission();
-        
-        const externalRoot = window.cordova.file.externalRootDirectory; // 通常是 /storage/emulated/0/
+        const externalRoot = window.cordova.file.externalRootDirectory; // /storage/emulated/0/
         const backupDir = externalRoot + 'Download/存款管家备份/';
         
         const resolveLocalFileSystemURL = window.resolveLocalFileSystemURL;
-        
         return new Promise((resolve) => {
             resolveLocalFileSystemURL(backupDir, (dirEntry) => {
                 writeFileToDir(dirEntry, filename, csvContent, resolve);
             }, (err) => {
-                // 目录不存在，先创建
+                // 目录不存在，创建
                 resolveLocalFileSystemURL(externalRoot + 'Download/', (downloadDir) => {
                     downloadDir.getDirectory('存款管家备份', { create: true }, (newDir) => {
                         writeFileToDir(newDir, filename, csvContent, resolve);
@@ -379,15 +377,14 @@
         });
     }
 
-    // 打开备份文件夹（尝试用 Intent）
+    // 打开备份文件夹（Cordova 下尝试）
     function openBackupFolder() {
         if (!window.cordova || !window.cordova.file) {
             showToast('当前非 Cordova 环境，无法自动打开文件夹，请手动前往「文件管理」-> Download/存款管家备份', 4000);
             return;
         }
         const backupDir = window.cordova.file.externalRootDirectory + 'Download/存款管家备份/';
-        // 使用 cordova-plugin-file-opener2 或简单提示
-        // 由于未预装该插件，我们使用通用方案：提示路径并尝试使用 Intent (仅部分设备支持)
+        // 尝试使用插件打开（若没有安装 file-opener2 则提示路径）
         if (window.plugins && window.plugins.fileOpener2) {
             window.plugins.fileOpener2.open(backupDir, 'application/vnd.android.directory', {
                 error: (e) => {
@@ -732,6 +729,42 @@
 
     function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
 
+    // 等待 Cordova 就绪后执行备份
+    let cordovaReady = false;
+    document.addEventListener('deviceready', () => {
+        cordovaReady = true;
+        console.log('Cordova 已就绪');
+        showToast('📱 存款管家已就绪，备份将保存到 Download/存款管家备份', 3000);
+    }, false);
+
+    // 包装备份按钮，确保在 Cordova 就绪后执行
+    function handleBackup() {
+        if (window.cordova && !cordovaReady) {
+            showToast('Cordova 未就绪，请稍后重试', 2000);
+            document.addEventListener('deviceready', () => {
+                doBackup();
+            }, { once: true });
+        } else {
+            doBackup();
+        }
+    }
+
+    async function doBackup() {
+        const deposits = await getDeposits(currentUser);
+        if (window.cordova && cordovaReady) {
+            await exportWithCordova(currentUser, deposits);
+        } else if (window.cordova && !cordovaReady) {
+            // 理论上不会进入这里，因上面已处理
+            showToast('Cordova 环境尚未完全初始化，请再次点击备份', 2000);
+        } else {
+            // 纯浏览器环境
+            const csvContent = generateCSVBlob(currentUser, deposits);
+            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+            const filename = `存款备份_${currentUser}_${timestamp}.csv`;
+            fallbackDownload(csvContent, filename);
+        }
+    }
+
     function bindEvents() {
         document.getElementById('userSelect').addEventListener('change', async (e) => { currentUser = e.target.value; await refreshData(); });
         document.getElementById('addUserBtn').addEventListener('click', showAddUserModal);
@@ -741,10 +774,7 @@
         document.getElementById('fixDataBtn').addEventListener('click', fixDuplicateRecords);
         document.getElementById('searchInput').addEventListener('input', (e) => { currentFilter = e.target.value.toLowerCase(); updateList(); });
         document.getElementById('addDepositBtn').addEventListener('click', () => showDepositModal());
-        document.getElementById('backupBtn').addEventListener('click', async () => { 
-            const deposits = await getDeposits(currentUser);
-            await exportWithFilePlugin(currentUser, deposits);
-        });
+        document.getElementById('backupBtn').addEventListener('click', handleBackup);
         document.getElementById('openBackupFolderBtn').addEventListener('click', openBackupFolder);
         const fileInput = document.getElementById('restoreFileInput');
         document.getElementById('restoreLabel').addEventListener('click', () => fileInput.click());
@@ -777,12 +807,6 @@
         bindEvents();
         checkReminders(false);
         setInterval(() => checkReminders(false), 24*3600*1000);
-        if (window.cordova) {
-            document.addEventListener('deviceready', () => {
-                console.log('Cordova ready');
-                showToast('📱 存款管家已就绪，备份文件将保存到 Download/存款管家备份 文件夹', 4000);
-            }, false);
-        }
     })();
 </script>
 </body>
