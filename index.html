@@ -3,122 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 - 最终版</title>
+    <title>存款管家 - 最终稳定版</title>
     <style>
+        /* 样式保持不变，完整复制您之前可用的版本 */
         * { box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f7fa;
-            margin: 0;
-            padding: 16px;
-            padding-bottom: 80px;
-        }
-        .card {
-            background: white;
-            border-radius: 20px;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-        .title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        button, .btn-like {
-            background: #3498db;
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 30px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: 0.2s;
-        }
+        body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
+        .card { background: white; border-radius: 20px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .title { font-size: 1.5rem; font-weight: bold; color: #2c3e50; }
+        button, .btn-like { background: #3498db; border: none; color: white; padding: 8px 16px; border-radius: 30px; font-size: 0.9rem; cursor: pointer; transition: 0.2s; }
         button.secondary { background: #95a5a6; }
         button.danger { background: #e74c3c; }
         button.warning { background: #f39c12; }
         button.small { padding: 4px 12px; font-size: 0.8rem; }
-        input, select, textarea {
-            width: 100%;
-            padding: 10px;
-            margin: 6px 0 12px;
-            border: 1px solid #ddd;
-            border-radius: 12px;
-            font-size: 1rem;
-        }
+        input, select, textarea { width: 100%; padding: 10px; margin: 6px 0 12px; border: 1px solid #ddd; border-radius: 12px; font-size: 1rem; }
         datalist { display: none; }
         .search-bar { margin-bottom: 12px; }
-        .deposit-item {
-            border-bottom: 1px solid #eee;
-            padding: 12px 0;
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            transition: background 0.2s;
-        }
-        .deposit-item.duplicate {
-            background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding-left: 8px;
-        }
+        .deposit-item { border-bottom: 1px solid #eee; padding: 12px 0; display: flex; align-items: flex-start; gap: 12px; transition: background 0.2s; }
+        .deposit-item.duplicate { background-color: #fff3cd; border-left: 4px solid #ffc107; padding-left: 8px; }
         .deposit-checkbox { flex-shrink: 0; padding-top: 4px; }
         .deposit-checkbox input { width: 22px; height: 22px; margin: 0; cursor: pointer; }
         .deposit-info { flex: 3; }
         .deposit-actions { display: flex; gap: 8px; flex-shrink: 0; }
         .amount { font-weight: bold; color: #27ae60; }
         .interest { color: #e67e22; font-size: 0.85rem; }
-        .status-bar {
-            background: #ecf0f1;
-            padding: 8px 12px;
-            border-radius: 30px;
-            font-size: 0.8rem;
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
+        .status-bar { background: #ecf0f1; padding: 8px 12px; border-radius: 30px; font-size: 0.8rem; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
         .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
         .batch-bar { margin-top: 8px; display: flex; gap: 12px; align-items: center; }
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.6);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background: white;
-            width: 90%;
-            max-width: 500px;
-            max-height: 85%;
-            border-radius: 28px;
-            padding: 20px;
-            overflow-y: auto;
-        }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; width: 90%; max-width: 500px; max-height: 85%; border-radius: 28px; padding: 20px; overflow-y: auto; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .badge { background: #3498db20; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; }
-        @media (max-width: 600px) {
-            body { padding: 10px; }
-            .deposit-item { flex-direction: column; align-items: stretch; }
-            .deposit-checkbox { align-self: flex-start; }
-            .deposit-actions { margin-top: 8px; justify-content: flex-end; }
-        }
+        @media (max-width: 600px) { body { padding: 10px; } .deposit-item { flex-direction: column; align-items: stretch; } .deposit-checkbox { align-self: flex-start; } .deposit-actions { margin-top: 8px; justify-content: flex-end; } }
     </style>
 </head>
 <body>
@@ -149,7 +65,7 @@
                 <label id="restoreLabel" class="btn-like secondary" style="display:inline-block; background:#2c3e50;">📂 恢复CSV
                     <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
                 </label>
-                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件，直接导入）</span>
+                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件导入）</span>
             </div>
             <div class="batch-bar">
                 <label style="display: flex; align-items: center; gap: 6px;"><input type="checkbox" id="selectAllCheckbox"> 全选</label>
@@ -161,7 +77,7 @@
 </div>
 
 <script>
-    // 预设列表
+    // 预设列表（与之前相同）
     const PRESET_BANKS = [
         "中国工商银行", "中国建设银行", "中国农业银行", "中国银行", "交通银行",
         "重庆银行", "重庆农村商业银行", "微众银行", "蓝海银行", "邮储银行",
@@ -330,7 +246,7 @@
         return upcoming;
     }
 
-    // ========== 备份：使用 Cordova 文件插件 ==========
+    // ========== 备份：使用系统分享（无需存储权限，文件直接分享或保存） ==========
     async function exportToCSV(user, deposits) {
         const sorted = [...deposits].sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
         const rows = [];
@@ -354,48 +270,31 @@
             return str;
         };
         const csvContent = csvLines.map(row => row.map(cell => escapeCSV(cell)).join(',')).join('\n');
-        const fileName = `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv' });
+        const file = new File([blob], `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`, { type: 'text/csv' });
 
-        // 使用 Cordova 文件插件
-        if (window.cordova && window.cordova.file) {
+        // 使用系统分享（微信、QQ、邮件、保存到文件管理器等）
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
-                // 请求存储权限
-                if (window.cordova.plugins && window.cordova.plugins.permissions) {
-                    await new Promise((resolve, reject) => {
-                        window.cordova.plugins.permissions.requestPermission(
-                            window.cordova.plugins.permissions.WRITE_EXTERNAL_STORAGE,
-                            (status) => status.hasPermission ? resolve() : reject('存储权限被拒绝'),
-                            reject
-                        );
-                    });
-                }
-                const downloadDir = window.cordova.file.externalRootDirectory + 'Download/';
-                const fileEntry = await new Promise((resolve, reject) => {
-                    window.resolveLocalFileSystemURL(downloadDir, (dirEntry) => {
-                        dirEntry.getFile(fileName, { create: true, exclusive: false }, resolve, reject);
-                    }, reject);
+                await navigator.share({
+                    title: '存款备份',
+                    text: '请选择应用接收备份文件，或保存到本地',
+                    files: [file]
                 });
-                await new Promise((resolve, reject) => {
-                    fileEntry.createWriter((writer) => {
-                        writer.onwriteend = resolve;
-                        writer.onerror = reject;
-                        writer.write(new Blob(["\uFEFF" + csvContent], { type: 'text/csv' }));
-                    }, reject);
-                });
-                alert(`✅ 备份成功！\n文件已保存到 Download 文件夹\n文件名：${fileName}`);
+                alert('备份文件已准备，请选择分享方式（微信/QQ/邮件/保存到文件管理器等）');
                 return true;
             } catch (err) {
-                console.error(err);
-                alert('备份失败：' + (err.message || err));
+                console.log('分享取消或失败', err);
+                alert('分享取消或失败，可尝试再次备份');
                 return false;
             }
         } else {
-            alert('当前环境不支持 Cordova 文件插件，无法直接保存。请使用其他方式。');
+            alert('当前设备不支持分享文件，无法备份');
             return false;
         }
     }
 
-    // ========== 导入：一次选择，直接导入 ==========
+    // ========== 导入：直接读取CSV文件（一次选择，直接导入） ==========
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -476,7 +375,7 @@
                     const notes = fields[colMap.notesIdx]?.trim() || '';
                     const deposit = { user: userName, bank, depositType, amount, startDate, maturityDate, rate, interestType, notes, isNotified: false, createdAt: new Date().toISOString() };
                     const key = keyFunc(deposit);
-                    // 默认跳过完全重复的记录（不弹窗）
+                    // 默认跳过完全重复的记录
                     if (existingKeys.has(key)) {
                         skipped++;
                         duplicateList.push({ bank, depositType, amount, startDate, maturityDate });
@@ -595,7 +494,6 @@
         if (select) select.innerHTML = users.map(u => `<option value="${u}" ${u === currentUser ? 'selected' : ''}>${u}</option>`).join('');
     }
 
-    // 管理用户弹窗
     async function showManageUsersModal() {
         const users = await getUsers();
         const modalDiv = document.createElement('div');
