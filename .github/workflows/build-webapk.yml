@@ -1,3 +1,29 @@
+mkdir -p app
+cp index.html app/
+cd app
+nitron init --name deposit-manager --package com.deposit.manager --url file:///... 但是 URL 不支持本地文件。
+
+更好的方式：使用 `npm init` 然后手动配置。
+
+事实上，`nitron` 可能期望一个已有的 web 目录。我们可以不用 `nitron init`，而是直接运行 `nitron build`。
+
+查阅记忆：`nitron` 用法：`nitron build android --source ./www` 之类的。不确定。
+
+推荐直接使用 `capacitor`，因为更稳定。
+
+我们可以提供一个更新后的 workflow 文件内容，用户需要替换 `.github/workflows/build-webapk.yml` 的内容。
+
+我将编写一个使用 `capacitor` 的 workflow。
+
+但是用户需要安装 Android SDK？GitHub Actions 的 `ubuntu-latest` 已经包含 Android SDK 和命令行工具，但需要设置环境变量。
+
+或者使用 `npx cap` 等。
+
+最好的方案是使用 `cordova`，因为它更简单。
+
+下面提供一个修复后的 YAML：
+
+```yaml
 name: Build Web APK
 
 on:
@@ -13,24 +39,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Nitron
-        run: npm install -g nitron
+      - name: Install Cordova
+        run: npm install -g cordova
 
-      - name: Build APK
+      - name: Create Cordova project
         run: |
-          mkdir -p app/www
-          cp index.html app/www/
-          cd app
-          nitron init deposit-manager --html . --android
-          nitron build android
+          cordova create deposit-app com.deposit.manager "存款管家"
+          cd deposit-app
+          cp ../index.html www/index.html
+          cordova platform add android
+          cordova build android --release -- --packageType=apk
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: deposit-manager-apk
-          path: app/build/android/app-debug.apk
+          path: deposit-app/platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk
