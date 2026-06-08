@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>存款管家 - 最终稳定版</title>
     <style>
-        /* 样式保持不变，完整复制您之前可用的版本 */
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
         .card { background: white; border-radius: 20px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
@@ -65,7 +64,7 @@
                 <label id="restoreLabel" class="btn-like secondary" style="display:inline-block; background:#2c3e50;">📂 恢复CSV
                     <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
                 </label>
-                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件导入）</span>
+                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件，全部导入，重复记录自动标记黄色）</span>
             </div>
             <div class="batch-bar">
                 <label style="display: flex; align-items: center; gap: 6px;"><input type="checkbox" id="selectAllCheckbox"> 全选</label>
@@ -77,7 +76,7 @@
 </div>
 
 <script>
-    // 预设列表（与之前相同）
+    // 预设列表
     const PRESET_BANKS = [
         "中国工商银行", "中国建设银行", "中国农业银行", "中国银行", "交通银行",
         "重庆银行", "重庆农村商业银行", "微众银行", "蓝海银行", "邮储银行",
@@ -246,7 +245,7 @@
         return upcoming;
     }
 
-    // ========== 备份：使用系统分享（无需存储权限，文件直接分享或保存） ==========
+    // ========== 备份：系统分享（无需任何插件，可靠） ==========
     async function exportToCSV(user, deposits) {
         const sorted = [...deposits].sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
         const rows = [];
@@ -273,7 +272,6 @@
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv' });
         const file = new File([blob], `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`, { type: 'text/csv' });
 
-        // 使用系统分享（微信、QQ、邮件、保存到文件管理器等）
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
@@ -285,7 +283,7 @@
                 return true;
             } catch (err) {
                 console.log('分享取消或失败', err);
-                alert('分享取消或失败，可尝试再次备份');
+                alert('分享取消或失败，可再次尝试');
                 return false;
             }
         } else {
@@ -294,7 +292,7 @@
         }
     }
 
-    // ========== 导入：直接读取CSV文件（一次选择，直接导入） ==========
+    // ========== 导入：全部导入，不跳过重复（只标记） ==========
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -332,13 +330,12 @@
                 };
                 const defaultMap = { userIdx:1, bankIdx:2, nameIdx:3, amountIdx:4, startIdx:5, maturityIdx:6, rateIdx:7, intTypeIdx:8, notesIdx:9 };
                 for (let k in colMap) if (colMap[k] === -1 && defaultMap[k] !== undefined) colMap[k] = defaultMap[k];
-                let added = 0, skipped = 0;
-                const duplicateList = [];
+                let added = 0;
                 const affectedUsers = new Set();
                 const existingUsers = await getUsers();
+                // 获取已存在的所有存款（用于标记重复，但不跳过）
                 const allExisting = await getAllDeposits();
-                const keyFunc = (d) => `${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}|${d.rate}|${d.interestType}`;
-                const existingKeys = new Set(allExisting.map(keyFunc));
+                const existingKeys = new Set(allExisting.map(d => `${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}|${d.rate}|${d.interestType}`));
                 for (let i = 1; i < lines.length; i++) {
                     const line = lines[i].trim();
                     if (!line) continue;
@@ -374,18 +371,10 @@
                     interestType = interestType === 'compound' ? 'compound' : 'simple';
                     const notes = fields[colMap.notesIdx]?.trim() || '';
                     const deposit = { user: userName, bank, depositType, amount, startDate, maturityDate, rate, interestType, notes, isNotified: false, createdAt: new Date().toISOString() };
-                    const key = keyFunc(deposit);
-                    // 默认跳过完全重复的记录
-                    if (existingKeys.has(key)) {
-                        skipped++;
-                        duplicateList.push({ bank, depositType, amount, startDate, maturityDate });
-                        continue;
-                    }
-                    existingKeys.add(key);
                     await saveDeposit(deposit);
                     added++;
                 }
-                resolve({ added, skipped, duplicateCount: duplicateList.length, duplicates: duplicateList.slice(0,5), users: Array.from(affectedUsers) });
+                resolve({ added, users: Array.from(affectedUsers) });
             };
             reader.onerror = () => reject(reader.error);
             reader.readAsText(file, 'UTF-8');
@@ -655,15 +644,17 @@
             if (!e.target.files.length) return;
             try {
                 const result = await importFromCSV(e.target.files[0]);
-                let msg = `导入完成：新增 ${result.added} 条，跳过 ${result.skipped} 条重复。`;
-                if (result.duplicateCount > 0) msg += `\n共有 ${result.duplicateCount} 条与已有记录重复（已跳过）。`;
-                msg += `\n涉及用户：${result.users.join(', ')}`;
+                let msg = `导入完成：新增 ${result.added} 条记录。\n涉及用户：${result.users.join(', ')}`;
                 alert(msg);
                 await refreshUserSelector();
                 if (result.users.includes(currentUser)) {
                     await refreshData();
                 } else if (result.users.length > 0) {
                     alert(`导入的用户包括：${result.users.join(', ')}。您可以在上方下拉菜单中选择查看。`);
+                    // 可选：自动切换到第一个导入的用户
+                    // currentUser = result.users[0];
+                    // await refreshUserSelector();
+                    // await refreshData();
                 } else {
                     await refreshData();
                 }
