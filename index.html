@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 - 最终稳定版</title>
+    <title>存款管家 · 全能离线版</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
@@ -60,11 +60,11 @@
         <div class="flex-between" style="margin-bottom: 12px;">
             <div>
                 <button id="addDepositBtn">➕ 新增存款</button>
-                <button id="backupBtn" class="secondary">💾 备份CSV</button>
+                <button id="backupBtn" class="secondary">💾 备份CSV (保存文件)</button>
                 <label id="restoreLabel" class="btn-like secondary" style="display:inline-block; background:#2c3e50;">📂 恢复CSV
                     <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
                 </label>
-                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件，全部导入，重复记录自动标记黄色）</span>
+                <span style="font-size:0.7rem; color:gray;">（点击后选择CSV文件，全部导入，重复自动标记）</span>
             </div>
             <div class="batch-bar">
                 <label style="display: flex; align-items: center; gap: 6px;"><input type="checkbox" id="selectAllCheckbox"> 全选</label>
@@ -76,7 +76,7 @@
 </div>
 
 <script>
-    // 预设列表
+    // ======================== 预设数据 ========================
     const PRESET_BANKS = [
         "中国工商银行", "中国建设银行", "中国农业银行", "中国银行", "交通银行",
         "重庆银行", "重庆农村商业银行", "微众银行", "蓝海银行", "邮储银行",
@@ -87,7 +87,7 @@
         "结构性存款", "通知存款", "理财产品", "货币基金", "股票基金", "其他"
     ];
 
-    // ---------- 存储层 (IndexedDB) ----------
+    // ======================== IndexedDB 封装 ========================
     const DB_NAME = 'DepositDB';
     const DB_VERSION = 1;
     let db = null;
@@ -142,12 +142,6 @@
         }
         const tx = db.transaction('users', 'readwrite');
         await tx.objectStore('users').delete(name);
-        if (currentUser === name) {
-            const remaining = await getUsers();
-            currentUser = remaining[0] || '默认用户';
-            await refreshUserSelector();
-            await refreshData();
-        }
         return true;
     }
 
@@ -175,11 +169,6 @@
         const tx = db.transaction('deposits', 'readwrite');
         const store = tx.objectStore('deposits');
         if (deposit.id) {
-            const original = await new Promise((resolve) => {
-                const req = store.get(deposit.id);
-                req.onsuccess = () => resolve(req.result);
-            });
-            if (!original) throw new Error(`要更新的存款 ID ${deposit.id} 不存在`);
             await store.put(deposit);
         } else {
             delete deposit.id;
@@ -245,7 +234,7 @@
         return upcoming;
     }
 
-    // ========== 备份：系统分享（无需任何插件，可靠） ==========
+    // ======================== 备份：直接下载CSV（无需分享） ========================
     async function exportToCSV(user, deposits) {
         const sorted = [...deposits].sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
         const rows = [];
@@ -269,30 +258,21 @@
             return str;
         };
         const csvContent = csvLines.map(row => row.map(cell => escapeCSV(cell)).join(',')).join('\n');
-        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv' });
-        const file = new File([blob], `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`, { type: 'text/csv' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({
-                    title: '存款备份',
-                    text: '请选择应用接收备份文件，或保存到本地',
-                    files: [file]
-                });
-                alert('备份文件已准备，请选择分享方式（微信/QQ/邮件/保存到文件管理器等）');
-                return true;
-            } catch (err) {
-                console.log('分享取消或失败', err);
-                alert('分享取消或失败，可再次尝试');
-                return false;
-            }
-        } else {
-            alert('当前设备不支持分享文件，无法备份');
-            return false;
-        }
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        // 创建临时下载链接
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.setAttribute('download', `存款备份_${user}_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        alert('✅ 备份文件已生成并下载，请到「下载」文件夹或浏览器下载目录中查看。');
+        return true;
     }
 
-    // ========== 导入：全部导入，不跳过重复（只标记） ==========
+    // ======================== 导入CSV（保留原逻辑，并标记重复） ========================
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -333,7 +313,6 @@
                 let added = 0;
                 const affectedUsers = new Set();
                 const existingUsers = await getUsers();
-                // 获取已存在的所有存款（用于标记重复，但不跳过）
                 const allExisting = await getAllDeposits();
                 const existingKeys = new Set(allExisting.map(d => `${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}|${d.rate}|${d.interestType}`));
                 for (let i = 1; i < lines.length; i++) {
@@ -381,6 +360,7 @@
         });
     }
 
+    // 修复完全重复的记录 (所有字段相同)
     async function fixDuplicateRecords() {
         const allDepositsAllUsers = await getAllDeposits();
         const groups = new Map();
@@ -419,7 +399,7 @@
         }
     }
 
-    // ---------- UI 状态 ----------
+    // ======================== UI 交互与渲染 ========================
     let currentUser = '默认用户';
     let allDeposits = [];
     let duplicateIds = new Set();
@@ -628,7 +608,7 @@
 
     function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
 
-    function bindFixedEvents() {
+    function bindEvents() {
         document.getElementById('userSelect').addEventListener('change', async (e) => { currentUser = e.target.value; await refreshData(); });
         document.getElementById('addUserBtn').addEventListener('click', showAddUserModal);
         document.getElementById('manageUserBtn').addEventListener('click', showManageUsersModal);
@@ -651,10 +631,6 @@
                     await refreshData();
                 } else if (result.users.length > 0) {
                     alert(`导入的用户包括：${result.users.join(', ')}。您可以在上方下拉菜单中选择查看。`);
-                    // 可选：自动切换到第一个导入的用户
-                    // currentUser = result.users[0];
-                    // await refreshUserSelector();
-                    // await refreshData();
                 } else {
                     await refreshData();
                 }
@@ -670,7 +646,7 @@
         currentUser = users[0] || '默认用户';
         await refreshUserSelector();
         await refreshData();
-        bindFixedEvents();
+        bindEvents();
         checkReminders(false);
         setInterval(() => checkReminders(false), 24*3600*1000);
     })();
