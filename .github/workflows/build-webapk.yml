@@ -35,7 +35,7 @@ jobs:
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
           cp ../index.html www/index.html
-          # 添加必需插件
+          # 添加必需的插件（文件插件和权限插件）
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-android-permissions
           # 配置 Android 权限（读写存储）
