@@ -35,7 +35,11 @@ jobs:
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
           cp ../index.html www/index.html
-          # 添加存储权限（用于备份/恢复CSV）
+          # 添加必需的插件
+          cordova plugin add cordova-plugin-file
+          cordova plugin add cordova-plugin-file-opener2
+          cordova plugin add cordova-plugin-permissions
+          # 配置 Android 权限 (读写存储)
           sed -i '/<platform name="android">/a \        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n        </config-file>' config.xml
           cordova platform add android
           cordova build android
