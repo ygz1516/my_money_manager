@@ -1,0 +1,38 @@
+name: Build Web APK
+
+on:
+  # 当你手动触发时运行
+  workflow_dispatch:
+  # 或者当你修改 index.html 文件时自动运行
+  push:
+    paths:
+      - 'index.html'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Nitron
+        run: npm install -g nitron
+
+      - name: Build APK
+        run: |
+          mkdir -p app/www
+          cp index.html app/www/
+          cd app
+          nitron init deposit-manager --html . --android
+          nitron build android
+
+      - name: Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deposit-manager-apk
+          path: app/build/android/app-debug.apk
