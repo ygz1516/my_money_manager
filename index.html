@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 · 最终修复版</title>
+    <title>存款管家 · 完整功能版</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
@@ -60,6 +60,7 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
@@ -67,7 +68,7 @@
 <div id="app">
     <div class="card">
         <div class="header">
-            <div class="title">💰 存款管家 · 最终修复版</div>
+            <div class="title">💰 存款管家 · 完整功能版</div>
             <div class="flex-between">
                 <select id="userSelect" class="badge" style="background:#ecf0f1; padding:6px;"></select>
                 <button id="addUserBtn" class="small secondary">➕ 用户</button>
@@ -84,15 +85,9 @@
             <span id="selectedStats" style="color:#27ae60;"></span>
         </div>
         <div class="filter-bar" style="margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-            <select id="filterBank" class="form-select form-select-sm" style="width: auto;">
-                <option value="">所有银行</option>
-            </select>
-            <select id="filterType" class="form-select form-select-sm" style="width: auto;">
-                <option value="">所有类型</option>
-            </select>
-            <select id="filterHolder" class="form-select form-select-sm" style="width: auto;">
-                <option value="">所有持有人</option>
-            </select>
+            <select id="filterBank" class="form-select form-select-sm" style="width: auto;"><option value="">所有银行</option></select>
+            <select id="filterType" class="form-select form-select-sm" style="width: auto;"><option value="">所有类型</option></select>
+            <select id="filterHolder" class="form-select form-select-sm" style="width: auto;"><option value="">所有持有人</option></select>
             <input type="number" id="minAmount" placeholder="最小金额" class="form-control form-control-sm" style="width: 100px;">
             <input type="number" id="maxAmount" placeholder="最大金额" class="form-control form-control-sm" style="width: 100px;">
             <button id="clearFiltersBtn" class="btn btn-sm secondary">清除筛选</button>
@@ -334,7 +329,7 @@
         return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
     }
 
-    // ---------- 利息计算（修复版）----------
+    // ---------- 利息计算 ----------
     async function calculateInterest(deposit, asOfDate = null) {
         const { startDate, maturityDate, amount, rate, interestType, id } = deposit;
         if (!startDate || amount <= 0 || rate == null || isNaN(rate)) return 0;
@@ -387,7 +382,6 @@
 
     async function calculateTotalInterest(deposit) {
         if (!deposit.maturityDate) return 0;
-        // 直接使用到期日作为结束日期
         const mat = parseDate(deposit.maturityDate);
         if (!mat) return 0;
         return await calculateInterest(deposit, mat);
@@ -403,7 +397,6 @@
         return deposits;
     }
 
-    // 统计
     async function getStats(user) {
         const deposits = await getDeposits(user);
         const enriched = await enrichDeposits(deposits);
@@ -420,7 +413,6 @@
             totalCurrentInterest += d.currentInterest || 0;
             totalMaturityInterest += d.totalInterest || 0;
         }
-        // 四舍五入保留两位小数，解决精度问题
         for (let k in byBank) byBank[k] = Math.round(byBank[k] * 100) / 100;
         for (let k in byType) byType[k] = Math.round(byType[k] * 100) / 100;
         for (let k in byHolder) byHolder[k] = Math.round(byHolder[k] * 100) / 100;
@@ -499,7 +491,12 @@
     }
 
     function fallbackDownload(content, filename, mime = 'text/csv') {
-        const blob = new Blob([content], { type: mime });
+        let blob;
+        if (content instanceof Blob) {
+            blob = content;
+        } else {
+            blob = new Blob([content], { type: mime });
+        }
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.href = url;
@@ -538,11 +535,17 @@
     }
 
     function writeFileToDir(dirEntry, filename, content, mime, callback) {
+        // 如果 content 已经是 Blob，直接使用；否则创建 Blob
+        let blob;
+        if (content instanceof Blob) {
+            blob = content;
+        } else {
+            blob = new Blob([content], { type: mime });
+        }
         dirEntry.getFile(filename, { create: true, exclusive: false }, (fileEntry) => {
             fileEntry.createWriter((writer) => {
                 writer.onwriteend = () => { showToast(`✅ 备份成功：${fileEntry.nativeURL || fileEntry.toURL()}`, 6000); callback(true); };
                 writer.onerror = () => { fallbackDownload(content, filename, mime); callback(false); };
-                const blob = new Blob([content], { type: mime });
                 writer.write(blob);
             }, () => { fallbackDownload(content, filename, mime); callback(false); });
         }, () => { fallbackDownload(content, filename, mime); callback(false); });
@@ -561,7 +564,7 @@
         }
     }
 
-    // ======================== CSV 导入 ========================
+    // ======================== CSV 导入（修复一次成功 + 利率健壮性） ========================
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -606,6 +609,7 @@
                 if (colMap.startIdx === -1) colMap.startIdx = headers.findIndex(h => h.includes('起始日期'));
                 if (colMap.rateIdx === -1) colMap.rateIdx = headers.findIndex(h => h.includes('利率(%)'));
                 if (colMap.intTypeIdx === -1) colMap.intTypeIdx = headers.findIndex(h => h.includes('计息类型'));
+                
                 const existingUsers = await getUsers();
                 let added = 0;
                 const affectedUsers = new Set();
@@ -615,7 +619,10 @@
                     let userName = fields[colMap.userIdx]?.trim();
                     if (!userName) continue;
                     affectedUsers.add(userName);
-                    if (!existingUsers.includes(userName)) { await addUser(userName); existingUsers.push(userName); }
+                    if (!existingUsers.includes(userName)) {
+                        await addUser(userName);
+                        existingUsers.push(userName);
+                    }
                     const bank = fields[colMap.bankIdx]?.trim() || '';
                     const depositType = fields[colMap.nameIdx]?.trim() || '';
                     let amountRaw = fields[colMap.amountIdx]?.replace(/,/g, '').trim();
@@ -629,7 +636,14 @@
                     if (maturityDateRaw) { let d = parseDate(maturityDateRaw); if (d) maturityDate = formatDate(d); }
                     let rateRaw = fields[colMap.rateIdx]?.trim();
                     let rate = null;
-                    if (rateRaw && rateRaw !== '') { let r = parseFloat(rateRaw); if (!isNaN(r)) rate = r; }
+                    if (rateRaw && rateRaw !== '') {
+                        let r = parseFloat(rateRaw);
+                        if (!isNaN(r)) rate = r;
+                    }
+                    // 对活期/理财类，允许利率为空（设为0）
+                    if (rate === null && (depositType.includes('活期') || depositType.includes('理财') || depositType.includes('基金'))) {
+                        rate = 0;
+                    }
                     let interestType = fields[colMap.intTypeIdx]?.trim().toLowerCase() || 'simple';
                     interestType = (interestType === 'compound' || interestType === '复利') ? 'compound' : 'simple';
                     const notes = fields[colMap.notesIdx]?.trim() || '';
@@ -668,28 +682,21 @@
     async function restoreJSON(file) {
         const text = await file.text();
         const data = JSON.parse(text);
-        // 使用同一个事务完成清除和写入
         const tx = db.transaction(['users', 'deposits', 'rate_history'], 'readwrite');
         const userStore = tx.objectStore('users');
         const depStore = tx.objectStore('deposits');
         const rateStore = tx.objectStore('rate_history');
-
         await new Promise((resolve, reject) => {
             const clearRequests = [userStore.clear(), depStore.clear(), rateStore.clear()];
             let completed = 0;
             clearRequests.forEach(req => {
-                req.onsuccess = () => {
-                    completed++;
-                    if (completed === 3) resolve();
-                };
+                req.onsuccess = () => { completed++; if (completed === 3) resolve(); };
                 req.onerror = () => reject(req.error);
             });
         });
-
         for (let u of data.users) userStore.add({ name: u });
         for (let d of data.deposits) depStore.add(d);
         for (let r of (data.rate_history || [])) rateStore.add(r);
-
         await new Promise(resolve => tx.oncomplete = resolve);
         await refreshData();
         alert('JSON 恢复成功');
@@ -729,8 +736,6 @@
         allDeposits = await getDeposits(currentUser);
         allDeposits = await enrichDeposits(allDeposits);
         allDeposits.sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
-
-        // 去重检测
         const keyMap = new Map();
         duplicateIds.clear();
         for (let d of allDeposits) {
@@ -739,32 +744,24 @@
             else keyMap.set(key, d.id);
         }
 
-        // 更新银行筛选器选项
+        // 更新筛选器选项
         const bankFilter = document.getElementById('filterBank');
         if (bankFilter) {
             const banks = [...new Set(allDeposits.map(d => d.bank))];
-            bankFilter.innerHTML = '<option value="">所有银行</option>' +
-                banks.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+            bankFilter.innerHTML = '<option value="">所有银行</option>' + banks.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
         }
-
-        // 更新类型筛选器选项
         const typeFilter = document.getElementById('filterType');
         if (typeFilter) {
             const types = [...new Set(allDeposits.map(d => d.depositType))];
-            typeFilter.innerHTML = '<option value="">所有类型</option>' +
-                types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+            typeFilter.innerHTML = '<option value="">所有类型</option>' + types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
         }
-
-        // 更新持有人筛选器选项
         const holderFilter = document.getElementById('filterHolder');
         if (holderFilter) {
             const holders = [...new Set(allDeposits.map(d => d.user))];
-            holderFilter.innerHTML = '<option value="">所有持有人</option>' +
-                holders.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
+            holderFilter.innerHTML = '<option value="">所有持有人</option>' + holders.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
         }
 
         await updateList();
-
         const hasAny = allDeposits.length > 0;
         const selectAll = document.getElementById('selectAllCheckbox');
         const batchDelete = document.getElementById('batchDeleteBtn');
@@ -774,30 +771,16 @@
 
     async function updateList() {
         let filtered = [...allDeposits];
-
-        // 文本搜索
         const searchText = document.getElementById('searchInput').value.toLowerCase();
         if (searchText) {
-            filtered = filtered.filter(d =>
-                d.bank.toLowerCase().includes(searchText) ||
-                d.depositType.toLowerCase().includes(searchText) ||
-                (d.notes && d.notes.toLowerCase().includes(searchText))
-            );
+            filtered = filtered.filter(d => d.bank.toLowerCase().includes(searchText) || d.depositType.toLowerCase().includes(searchText) || (d.notes && d.notes.toLowerCase().includes(searchText)));
         }
-
-        // 银行筛选
         const filterBank = document.getElementById('filterBank')?.value;
         if (filterBank) filtered = filtered.filter(d => d.bank === filterBank);
-
-        // 类型筛选
         const filterType = document.getElementById('filterType')?.value;
         if (filterType) filtered = filtered.filter(d => d.depositType === filterType);
-
-        // 持有人筛选
         const filterHolder = document.getElementById('filterHolder')?.value;
         if (filterHolder) filtered = filtered.filter(d => d.user === filterHolder);
-
-        // 金额区间筛选
         const minAmount = parseFloat(document.getElementById('minAmount')?.value);
         const maxAmount = parseFloat(document.getElementById('maxAmount')?.value);
         if (!isNaN(minAmount)) filtered = filtered.filter(d => d.amount >= minAmount);
@@ -806,7 +789,6 @@
         const totalAmount = filtered.reduce((s,d) => s + d.amount, 0);
         const totalInterest = filtered.reduce((s,d) => s + (d.currentInterest || 0), 0);
         const totalMaturityInterest = filtered.reduce((s,d) => s + (d.totalInterest || 0), 0);
-
         document.getElementById('statsText').innerHTML = `📋 共 ${filtered.length} 条 | 本金: ¥${totalAmount.toFixed(2)} | 当前利息: ¥${totalInterest.toFixed(2)} | 到期利息: ¥${totalMaturityInterest.toFixed(2)}`;
         document.getElementById('duplicateWarning').innerHTML = duplicateIds.size > 0 ? `⚠️ 有重复记录` : '';
 
@@ -842,7 +824,7 @@
             selectAll.parentNode.replaceChild(newSelectAll, selectAll);
             newSelectAll.addEventListener('change', (e) => {
                 document.querySelectorAll('.deposit-check').forEach(cb => cb.checked = e.target.checked);
-                updateSelectedStats();  // 新增
+                updateSelectedStats();
             });
         }
         const batchDeleteBtn = document.getElementById('batchDeleteBtn');
@@ -856,7 +838,6 @@
                 if (confirm(`确定要删除选中的 ${ids.length} 条记录吗？`)) { await deleteDeposits(ids); await refreshData(); }
             });
         }
-        // 监听所有勾选变化
         document.querySelectorAll('.deposit-check').forEach(cb => {
             cb.addEventListener('change', updateSelectedStats);
         });
@@ -868,7 +849,6 @@
         const selected = allDeposits.filter(d => selectedIds.includes(d.id));
         const totalAmount = selected.reduce((s,d) => s + d.amount, 0);
         const totalCurrent = selected.reduce((s,d) => s + (d.currentInterest || 0), 0);
-        const totalMaturity = selected.reduce((s,d) => s + (d.totalInterest || 0), 0);
         const statsSpan = document.getElementById('selectedStats');
         if (statsSpan) {
             statsSpan.innerHTML = ` | ✅ 已选 ${selected.length} 条: 本金 ¥${totalAmount.toFixed(2)} | 利息 ¥${totalCurrent.toFixed(2)}`;
@@ -1035,6 +1015,7 @@
         modalDiv.querySelector('#closeRateModal').onclick = () => modalDiv.remove();
     }
 
+    // ======================== 图表增强（可缩放 + 防遮挡） ========================
     async function showStatsModal() {
         const stats = await getStats(currentUser);
         const modalDiv = document.createElement('div');
@@ -1058,6 +1039,7 @@
             chart.setOption({
                 title: { text: title, left: 'center', textStyle: { fontSize: 12 } },
                 tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+                toolbox: { feature: { saveAsImage: { title: '保存图片' }, zoom: { title: { zoom: '缩放', back: '还原' } } } },
                 series: [{ type: 'pie', radius: '55%', data: Object.entries(data).map(([n,v]) => ({ name: n, value: v })), label: { show: true, formatter: '{b}: {d}%' } }]
             });
         };
@@ -1067,22 +1049,41 @@
         const valid = stats.deposits.filter(d => d.startDate && d.maturityDate);
         if (valid.length) {
             const timeline = echarts.init(modalDiv.querySelector('#timelineChart'));
-            const series = valid.map(d => ({
-                name: `${d.bank}-${d.depositType}`,
-                type: 'line',
-                data: [[d.startDate, d.amount], [d.maturityDate, d.amount]],
-                lineStyle: { width: 3, color: '#3498db' },
-                symbol: 'circle', symbolSize: 6,
-                tooltip: { formatter: `金额: ¥${d.amount.toFixed(2)}` }
-            }));
-            timeline.setOption({ title: { text: '存款时间线', left: 'center' }, tooltip: { trigger: 'axis' }, xAxis: { type: 'time' }, yAxis: { type: 'value', name: '金额(元)' }, series });
+            timeline.setOption({
+                title: { text: '存款时间线', left: 'center' },
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                grid: { containLabel: true, left: '8%', right: '8%', top: 40, bottom: 40 },
+                xAxis: { type: 'time', name: '时间', axisLabel: { rotate: 30, interval: 'auto' } },
+                yAxis: { type: 'value', name: '金额(元)', axisLabel: { formatter: (v) => (v / 10000).toFixed(1) + '万' } },
+                series: valid.map(d => ({
+                    name: `${d.bank}-${d.depositType}`,
+                    type: 'line',
+                    data: [[d.startDate, d.amount], [d.maturityDate, d.amount]],
+                    lineStyle: { width: 3, color: '#3498db' },
+                    symbol: 'circle', symbolSize: 6,
+                    tooltip: { formatter: `金额: ¥${d.amount.toFixed(2)}` }
+                })),
+                toolbox: {
+                    feature: {
+                        saveAsImage: { title: '保存图片' },
+                        dataZoom: { yAxisIndex: 'none', title: { zoom: '区域缩放', back: '还原' } },
+                        restore: { title: '还原' }
+                    },
+                    iconStyle: { borderColor: '#3498db' },
+                    right: 20
+                },
+                dataZoom: [
+                    { type: 'inside', start: 0, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: true },   // 支持双指缩放、平移
+                    { type: 'slider', start: 0, end: 100, bottom: 10, height: 20 }                            // 滑动条缩放
+                ]
+            });
         } else {
             modalDiv.querySelector('#timelineChart').innerHTML = '<div style="text-align:center;color:gray;">无日期数据</div>';
         }
         modalDiv.querySelector('#closeStatsBtn').onclick = () => modalDiv.remove();
     }
 
-    // 到期预测模态框（带关闭按钮）
+    // 到期预测模态框（带关闭按钮 + 缩放）
     async function showForecast() {
         const monthly = await getMonthlyMaturityForecast(currentUser);
         const months = Object.keys(monthly).sort();
@@ -1108,13 +1109,25 @@
         const chart = echarts.init(chartDom);
         chart.setOption({
             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-            xAxis: { type: 'category', data: months, axisLabel: { rotate: 30 } },
+            xAxis: { type: 'category', data: months, axisLabel: { rotate: 30, interval: 0 } },
             yAxis: { type: 'value', name: '金额(元)' },
             series: [{
                 type: 'bar', data: amounts,
                 itemStyle: { color: '#3498db', borderRadius: [4,4,0,0] },
                 label: { show: true, position: 'top', formatter: (p) => (p.value / 10000).toFixed(1) + '万' }
-            }]
+            }],
+            toolbox: {
+                feature: {
+                    saveAsImage: { title: '保存图片' },
+                    dataZoom: { yAxisIndex: 'none', title: { zoom: '区域缩放', back: '还原' } },
+                    restore: { title: '还原' }
+                },
+                right: 20
+            },
+            dataZoom: [
+                { type: 'inside', start: 0, end: 100, zoomOnMouseWheel: true, moveOnMouseMove: true },
+                { type: 'slider', start: 0, end: 100, bottom: 10, height: 20 }
+            ]
         });
         modalDiv.querySelector('#closeForecastBtn').onclick = () => modalDiv.remove();
     }
@@ -1131,18 +1144,164 @@
         } else if (manual) alert('未来7天内没有即将到期的存款');
     }
 
+    // ======================== PDF 导出（支持手机保存到文件） ========================
     async function exportPDF() {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF('landscape');
-        const body = [];
-        for (let d of allDeposits) {
-            body.push([d.bank, d.depositType, d.user, d.amount.toFixed(2), d.startDate||'-', d.maturityDate||'-', d.rate, d.interestType, d.currentInterest.toFixed(2), d.totalInterest.toFixed(2)]);
+        // 1. 获取当前筛选后的存款数据
+        let filtered = [...allDeposits];
+        const searchText = document.getElementById('searchInput').value.toLowerCase();
+        if (searchText) {
+            filtered = filtered.filter(d => d.bank.toLowerCase().includes(searchText) || d.depositType.toLowerCase().includes(searchText) || (d.notes && d.notes.toLowerCase().includes(searchText)));
         }
-        doc.autoTable({
-            head: [['银行','类型','持有人','金额','起始日','到期日','利率','利息类型','当前利息','到期利息']],
-            body: body
+        const filterBank = document.getElementById('filterBank')?.value;
+        if (filterBank) filtered = filtered.filter(d => d.bank === filterBank);
+        const filterType = document.getElementById('filterType')?.value;
+        if (filterType) filtered = filtered.filter(d => d.depositType === filterType);
+        const filterHolder = document.getElementById('filterHolder')?.value;
+        if (filterHolder) filtered = filtered.filter(d => d.user === filterHolder);
+        const minAmount = parseFloat(document.getElementById('minAmount')?.value);
+        const maxAmount = parseFloat(document.getElementById('maxAmount')?.value);
+        if (!isNaN(minAmount)) filtered = filtered.filter(d => d.amount >= minAmount);
+        if (!isNaN(maxAmount)) filtered = filtered.filter(d => d.amount <= maxAmount);
+
+        const totalAmount = filtered.reduce((s,d) => s + d.amount, 0);
+        const totalCurrentInterest = filtered.reduce((s,d) => s + (d.currentInterest || 0), 0);
+        const totalMaturityInterest = filtered.reduce((s,d) => s + (d.totalInterest || 0), 0);
+
+        // 2. 创建临时容器（放在屏幕外，避免用户看到）
+        const reportDiv = document.createElement('div');
+        reportDiv.style.position = 'absolute';
+        reportDiv.style.top = '-9999px';
+        reportDiv.style.left = '-9999px';
+        reportDiv.style.backgroundColor = 'white';
+        reportDiv.style.padding = '20px';
+        reportDiv.style.width = '800px';
+        reportDiv.style.fontFamily = 'system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+        document.body.appendChild(reportDiv);
+
+        // 3. 构建报表 HTML（包含表格）
+        reportDiv.innerHTML = `
+            <h1 style="text-align:center;">存款统计报表</h1>
+            <div style="margin-bottom:16px; font-size:14px;">
+                <strong>用户：</strong> ${escapeHtml(currentUser === null ? '所有用户合计' : currentUser)}<br>
+                <strong>总本金：</strong> ¥${totalAmount.toFixed(2)} &nbsp;&nbsp;
+                <strong>当前利息：</strong> ¥${totalCurrentInterest.toFixed(2)} &nbsp;&nbsp;
+                <strong>到期利息：</strong> ¥${totalMaturityInterest.toFixed(2)}
+            </div>
+            <div id="pdfHolderChart" style="height: 300px; width: 100%; margin-bottom: 30px;"></div>
+            <div id="pdfTypeChart" style="height: 300px; width: 100%; margin-bottom: 30px;"></div>
+            <div id="pdfBankChart" style="height: 300px; width: 100%; margin-bottom: 30px;"></div>
+            <div id="pdfTimelineChart" style="height: 300px; width: 100%; margin-bottom: 30px;"></div>
+            <div style="margin-bottom: 20px;">
+                <h3>📋 存款明细表</h3>
+                <table border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse:collapse; font-size:10px;">
+                    <thead>
+                        <tr><th>银行</th><th>类型</th><th>持有人</th><th>金额(元)</th><th>起始日</th><th>到期日</th><th>利率(%)</th><th>利息类型</th><th>当前利息</th><th>到期利息</th></tr>
+                    </thead>
+                    <tbody>
+                        ${filtered.map(d => `
+                            <tr>
+                                <td>${escapeHtml(d.bank)}</td>
+                                <td>${escapeHtml(d.depositType)}</td>
+                                <td>${escapeHtml(d.user)}</td>
+                                <td>${d.amount.toFixed(2)}</td>
+                                <td>${d.startDate || '-'}</td>
+                                <td>${d.maturityDate || '-'}</td>
+                                <td>${d.rate ?? '-'}</td>
+                                <td>${d.interestType === 'compound' ? '复利' : '单利'}</td>
+                                <td>${d.currentInterest.toFixed(2)}</td>
+                                <td>${d.totalInterest.toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // 4. 渲染图表
+        const stats = await getStats(currentUser);
+        const drawPie = (id, title, data) => {
+            const chart = echarts.init(reportDiv.querySelector(`#${id}`));
+            chart.setOption({
+                title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
+                tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+                series: [{ type: 'pie', radius: '55%', data: Object.entries(data).map(([n,v]) => ({ name: n, value: v })), label: { show: true, formatter: '{b}: {d}%' } }]
+            });
+        };
+        drawPie('pdfHolderChart', '持有人分布', stats.byHolder);
+        drawPie('pdfTypeChart', '存款类型分布', stats.byType);
+        drawPie('pdfBankChart', '银行分布', stats.byBank);
+
+        const valid = stats.deposits.filter(d => d.startDate && d.maturityDate);
+        if (valid.length) {
+            const timeline = echarts.init(reportDiv.querySelector('#pdfTimelineChart'));
+            timeline.setOption({
+                title: { text: '存款时间线', left: 'center' },
+                tooltip: { trigger: 'axis' },
+                xAxis: { type: 'time' },
+                yAxis: { type: 'value', name: '金额(元)' },
+                series: valid.map(d => ({
+                    name: `${d.bank}-${d.depositType}`,
+                    type: 'line',
+                    data: [[d.startDate, d.amount], [d.maturityDate, d.amount]],
+                    lineStyle: { width: 3, color: '#3498db' },
+                    symbol: 'circle', symbolSize: 6
+                }))
+            });
+        } else {
+            reportDiv.querySelector('#pdfTimelineChart').innerHTML = '<div style="text-align:center;color:gray;">无日期数据</div>';
+        }
+
+        // 5. 等待渲染完成（通过轮询检测表格行数是否已渲染）
+        await new Promise(resolve => {
+            const checkTable = () => {
+                const rows = reportDiv.querySelectorAll('tbody tr');
+                if (rows.length === filtered.length) {
+                    resolve();
+                } else {
+                    setTimeout(checkTable, 200);
+                }
+            };
+            setTimeout(checkTable, 500); // 初始延迟
         });
-        doc.save(`存款报表_${currentUser === null ? '合计' : currentUser}_${new Date().toISOString().slice(0,10)}.pdf`);
+        // 额外等待 1 秒确保图表动画完成
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // 6. 截图整个容器（滚动区域）
+        const canvas = await html2canvas(reportDiv, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: false,
+            windowWidth: reportDiv.scrollWidth,
+            windowHeight: reportDiv.scrollHeight
+        });
+        reportDiv.remove();
+
+        // 7. 将截图图片添加到 PDF（支持分页）
+        const { jsPDF } = window.jspdf;
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = 190; // mm
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        let heightLeft = imgHeight;
+        let position = 10;
+        doc.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= (doc.internal.pageSize.getHeight() - 20);
+        while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            doc.addPage();
+            doc.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight, undefined, 'FAST');
+            heightLeft -= (doc.internal.pageSize.getHeight() - 20);
+        }
+
+        // 8. 保存 PDF
+        const pdfBlob = doc.output('blob');
+        const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+        const filename = `存款报表_${currentUser === null ? '合计' : currentUser}_${timestamp}.pdf`;
+        if (window.cordova && window.cordova.file) {
+            await exportWithCordova(pdfBlob, filename, 'application/pdf');
+        } else {
+            fallbackDownload(pdfBlob, filename, 'application/pdf');
+        }
     }
 
     function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
@@ -1178,7 +1337,7 @@
         document.getElementById('backupCsvBtn').addEventListener('click', doBackupCsv);
         document.getElementById('backupJsonBtn').addEventListener('click', backupJSON);
         document.getElementById('openBackupFolderBtn').addEventListener('click', openBackupFolder);
-
+        
         const pdfBtn = document.createElement('button');
         pdfBtn.id = 'pdfBtn';
         pdfBtn.className = 'small';
@@ -1215,17 +1374,11 @@
         filterElements.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
-                if (id === 'searchInput') {
-                    el.addEventListener('input', () => updateList());
-                } else if (id === 'minAmount' || id === 'maxAmount') {
-                    el.addEventListener('input', () => updateList());
-                } else {
-                    el.addEventListener('change', () => updateList());
-                }
+                if (id === 'searchInput') el.addEventListener('input', () => updateList());
+                else if (id === 'minAmount' || id === 'maxAmount') el.addEventListener('input', () => updateList());
+                else el.addEventListener('change', () => updateList());
             }
         });
-
-        // 清除筛选按钮
         const clearBtn = document.getElementById('clearFiltersBtn');
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
