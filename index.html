@@ -81,6 +81,21 @@
         <div class="status-bar" id="statusBar">
             <span id="statsText"></span>
             <span id="duplicateWarning" style="color:#e67e22;"></span>
+            <span id="selectedStats" style="color:#27ae60;"></span>
+        </div>
+        <div class="filter-bar" style="margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+            <select id="filterBank" class="form-select form-select-sm" style="width: auto;">
+                <option value="">所有银行</option>
+            </select>
+            <select id="filterType" class="form-select form-select-sm" style="width: auto;">
+                <option value="">所有类型</option>
+            </select>
+            <select id="filterHolder" class="form-select form-select-sm" style="width: auto;">
+                <option value="">所有持有人</option>
+            </select>
+            <input type="number" id="minAmount" placeholder="最小金额" class="form-control form-control-sm" style="width: 100px;">
+            <input type="number" id="maxAmount" placeholder="最大金额" class="form-control form-control-sm" style="width: 100px;">
+            <button id="clearFiltersBtn" class="btn btn-sm secondary">清除筛选</button>
         </div>
         <div class="search-bar">
             <input type="text" id="searchInput" placeholder="🔍 搜索银行/类型/备注">
@@ -653,15 +668,29 @@
     async function restoreJSON(file) {
         const text = await file.text();
         const data = JSON.parse(text);
-        const userStore = await getStore('users', 'readwrite');
-        const depStore = await getStore('deposits', 'readwrite');
-        const rateStore = await getStore('rate_history', 'readwrite');
-        await new Promise(resolve => userStore.clear().onsuccess = () => resolve());
-        await new Promise(resolve => depStore.clear().onsuccess = () => resolve());
-        await new Promise(resolve => rateStore.clear().onsuccess = () => resolve());
-        for (let u of data.users) await userStore.add({ name: u });
-        for (let d of data.deposits) await depStore.add(d);
-        for (let r of (data.rate_history || [])) await rateStore.add(r);
+        // 使用同一个事务完成清除和写入
+        const tx = db.transaction(['users', 'deposits', 'rate_history'], 'readwrite');
+        const userStore = tx.objectStore('users');
+        const depStore = tx.objectStore('deposits');
+        const rateStore = tx.objectStore('rate_history');
+
+        await new Promise((resolve, reject) => {
+            const clearRequests = [userStore.clear(), depStore.clear(), rateStore.clear()];
+            let completed = 0;
+            clearRequests.forEach(req => {
+                req.onsuccess = () => {
+                    completed++;
+                    if (completed === 3) resolve();
+                };
+                req.onerror = () => reject(req.error);
+            });
+        });
+
+        for (let u of data.users) userStore.add({ name: u });
+        for (let d of data.deposits) depStore.add(d);
+        for (let r of (data.rate_history || [])) rateStore.add(r);
+
+        await new Promise(resolve => tx.oncomplete = resolve);
         await refreshData();
         alert('JSON 恢复成功');
     }
@@ -700,6 +729,8 @@
         allDeposits = await getDeposits(currentUser);
         allDeposits = await enrichDeposits(allDeposits);
         allDeposits.sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
+
+        // 去重检测
         const keyMap = new Map();
         duplicateIds.clear();
         for (let d of allDeposits) {
@@ -707,7 +738,33 @@
             if (keyMap.has(key)) { duplicateIds.add(d.id); duplicateIds.add(keyMap.get(key)); }
             else keyMap.set(key, d.id);
         }
+
+        // 更新银行筛选器选项
+        const bankFilter = document.getElementById('filterBank');
+        if (bankFilter) {
+            const banks = [...new Set(allDeposits.map(d => d.bank))];
+            bankFilter.innerHTML = '<option value="">所有银行</option>' +
+                banks.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+        }
+
+        // 更新类型筛选器选项
+        const typeFilter = document.getElementById('filterType');
+        if (typeFilter) {
+            const types = [...new Set(allDeposits.map(d => d.depositType))];
+            typeFilter.innerHTML = '<option value="">所有类型</option>' +
+                types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+        }
+
+        // 更新持有人筛选器选项
+        const holderFilter = document.getElementById('filterHolder');
+        if (holderFilter) {
+            const holders = [...new Set(allDeposits.map(d => d.user))];
+            holderFilter.innerHTML = '<option value="">所有持有人</option>' +
+                holders.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
+        }
+
         await updateList();
+
         const hasAny = allDeposits.length > 0;
         const selectAll = document.getElementById('selectAllCheckbox');
         const batchDelete = document.getElementById('batchDeleteBtn');
@@ -716,15 +773,43 @@
     }
 
     async function updateList() {
-        let filtered = currentFilter ? allDeposits.filter(d => 
-            d.bank.toLowerCase().includes(currentFilter) ||
-            d.depositType.toLowerCase().includes(currentFilter) ||
-            (d.notes && d.notes.toLowerCase().includes(currentFilter))
-        ) : [...allDeposits];
+        let filtered = [...allDeposits];
+
+        // 文本搜索
+        const searchText = document.getElementById('searchInput').value.toLowerCase();
+        if (searchText) {
+            filtered = filtered.filter(d =>
+                d.bank.toLowerCase().includes(searchText) ||
+                d.depositType.toLowerCase().includes(searchText) ||
+                (d.notes && d.notes.toLowerCase().includes(searchText))
+            );
+        }
+
+        // 银行筛选
+        const filterBank = document.getElementById('filterBank')?.value;
+        if (filterBank) filtered = filtered.filter(d => d.bank === filterBank);
+
+        // 类型筛选
+        const filterType = document.getElementById('filterType')?.value;
+        if (filterType) filtered = filtered.filter(d => d.depositType === filterType);
+
+        // 持有人筛选
+        const filterHolder = document.getElementById('filterHolder')?.value;
+        if (filterHolder) filtered = filtered.filter(d => d.user === filterHolder);
+
+        // 金额区间筛选
+        const minAmount = parseFloat(document.getElementById('minAmount')?.value);
+        const maxAmount = parseFloat(document.getElementById('maxAmount')?.value);
+        if (!isNaN(minAmount)) filtered = filtered.filter(d => d.amount >= minAmount);
+        if (!isNaN(maxAmount)) filtered = filtered.filter(d => d.amount <= maxAmount);
+
         const totalAmount = filtered.reduce((s,d) => s + d.amount, 0);
         const totalInterest = filtered.reduce((s,d) => s + (d.currentInterest || 0), 0);
-        document.getElementById('statsText').innerHTML = `📋 共 ${filtered.length} 条 | 本金: ¥${totalAmount.toFixed(2)} | 利息: ¥${totalInterest.toFixed(2)}`;
+        const totalMaturityInterest = filtered.reduce((s,d) => s + (d.totalInterest || 0), 0);
+
+        document.getElementById('statsText').innerHTML = `📋 共 ${filtered.length} 条 | 本金: ¥${totalAmount.toFixed(2)} | 当前利息: ¥${totalInterest.toFixed(2)} | 到期利息: ¥${totalMaturityInterest.toFixed(2)}`;
         document.getElementById('duplicateWarning').innerHTML = duplicateIds.size > 0 ? `⚠️ 有重复记录` : '';
+
         const container = document.getElementById('depositListContainer');
         container.innerHTML = `<div class="card"><div id="depositList">${filtered.map(dep => `
             <div class="deposit-item ${duplicateIds.has(dep.id) ? 'duplicate' : ''}" data-id="${dep.id}">
@@ -743,6 +828,7 @@
                     ${!dep.is_unlocked && dep.maturityDate && (new Date(dep.maturityDate) - new Date()) <= 7*86400000 ? `<button class="small warning unlockDepositBtn" data-id="${dep.id}">解锁</button>` : ''}
                 </div>
             </div>`).join('')}${filtered.length===0?'<div style="text-align:center; padding:30px;">暂无存款，点击上方➕添加</div>':''}</div></div>`;
+
         document.querySelectorAll('.editDepositBtn').forEach(btn => btn.addEventListener('click', (e) => { const id = parseInt(btn.dataset.id); const dep = allDeposits.find(d => d.id === id); if (dep) showDepositModal(dep); }));
         document.querySelectorAll('.deleteDepositBtn').forEach(btn => btn.addEventListener('click', async (e) => { const id = parseInt(btn.dataset.id); if (confirm('确定删除这笔存款吗？')) { await deleteDeposit(id); await refreshData(); } }));
         document.querySelectorAll('.unlockDepositBtn').forEach(btn => btn.addEventListener('click', async (e) => { const id = parseInt(btn.dataset.id); await unlockDeposit(id); await refreshData(); }));
@@ -754,7 +840,10 @@
         if (selectAll) {
             const newSelectAll = selectAll.cloneNode(true);
             selectAll.parentNode.replaceChild(newSelectAll, selectAll);
-            newSelectAll.addEventListener('change', (e) => { document.querySelectorAll('.deposit-check').forEach(cb => cb.checked = e.target.checked); });
+            newSelectAll.addEventListener('change', (e) => {
+                document.querySelectorAll('.deposit-check').forEach(cb => cb.checked = e.target.checked);
+                updateSelectedStats();  // 新增
+            });
         }
         const batchDeleteBtn = document.getElementById('batchDeleteBtn');
         if (batchDeleteBtn) {
@@ -766,6 +855,23 @@
                 const ids = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
                 if (confirm(`确定要删除选中的 ${ids.length} 条记录吗？`)) { await deleteDeposits(ids); await refreshData(); }
             });
+        }
+        // 监听所有勾选变化
+        document.querySelectorAll('.deposit-check').forEach(cb => {
+            cb.addEventListener('change', updateSelectedStats);
+        });
+    }
+
+    function updateSelectedStats() {
+        const checkedBoxes = document.querySelectorAll('.deposit-check:checked');
+        const selectedIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+        const selected = allDeposits.filter(d => selectedIds.includes(d.id));
+        const totalAmount = selected.reduce((s,d) => s + d.amount, 0);
+        const totalCurrent = selected.reduce((s,d) => s + (d.currentInterest || 0), 0);
+        const totalMaturity = selected.reduce((s,d) => s + (d.totalInterest || 0), 0);
+        const statsSpan = document.getElementById('selectedStats');
+        if (statsSpan) {
+            statsSpan.innerHTML = ` | ✅ 已选 ${selected.length} 条: 本金 ¥${totalAmount.toFixed(2)} | 利息 ¥${totalCurrent.toFixed(2)}`;
         }
     }
 
@@ -1072,7 +1178,7 @@
         document.getElementById('backupCsvBtn').addEventListener('click', doBackupCsv);
         document.getElementById('backupJsonBtn').addEventListener('click', backupJSON);
         document.getElementById('openBackupFolderBtn').addEventListener('click', openBackupFolder);
-        
+
         const pdfBtn = document.createElement('button');
         pdfBtn.id = 'pdfBtn';
         pdfBtn.className = 'small';
@@ -1103,6 +1209,35 @@
             try { await restoreJSON(e.target.files[0]); } catch (err) { alert('JSON恢复失败：' + err.message); }
             jsonInput.value = '';
         });
+
+        // 筛选器事件监听
+        const filterElements = ['filterBank', 'filterType', 'filterHolder', 'minAmount', 'maxAmount', 'searchInput'];
+        filterElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (id === 'searchInput') {
+                    el.addEventListener('input', () => updateList());
+                } else if (id === 'minAmount' || id === 'maxAmount') {
+                    el.addEventListener('input', () => updateList());
+                } else {
+                    el.addEventListener('change', () => updateList());
+                }
+            }
+        });
+
+        // 清除筛选按钮
+        const clearBtn = document.getElementById('clearFiltersBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                document.getElementById('filterBank').value = '';
+                document.getElementById('filterType').value = '';
+                document.getElementById('filterHolder').value = '';
+                document.getElementById('minAmount').value = '';
+                document.getElementById('maxAmount').value = '';
+                document.getElementById('searchInput').value = '';
+                updateList();
+            });
+        }
     }
 
     (async function init() {
