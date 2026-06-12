@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 · 终极修复版</title>
+    <title>存款管家 · 最终修复版</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
@@ -36,7 +36,28 @@
         .badge { background: #3498db20; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; }
         .toast-msg { position: fixed; bottom: 30px; left: 20px; right: 20px; background: rgba(0,0,0,0.85); color: white; text-align: center; padding: 12px; border-radius: 40px; z-index: 2000; font-size: 0.85rem; transition: opacity 0.3s; pointer-events: none; word-break: break-all; }
         .chart-container { height: 250px; margin-top: 16px; }
-        @media (max-width: 600px) { body { padding: 10px; } .deposit-item { flex-direction: column; align-items: stretch; } .deposit-checkbox { align-self: flex-start; } .deposit-actions { margin-top: 8px; justify-content: flex-end; } }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .deposit-item { flex-direction: column; align-items: stretch; }
+            .deposit-checkbox { align-self: flex-start; }
+            .deposit-actions { margin-top: 8px; justify-content: flex-end; }
+            .flex-between > div:first-child {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+            }
+            .flex-between > div:first-child button,
+            .flex-between > div:first-child label {
+                flex: 0 0 auto;
+                font-size: 0.75rem;
+                padding: 6px 12px;
+            }
+            .batch-bar {
+                margin-top: 8px;
+                justify-content: flex-start;
+            }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -46,7 +67,7 @@
 <div id="app">
     <div class="card">
         <div class="header">
-            <div class="title">💰 存款管家 · 终极修复版</div>
+            <div class="title">💰 存款管家 · 最终修复版</div>
             <div class="flex-between">
                 <select id="userSelect" class="badge" style="background:#ecf0f1; padding:6px;"></select>
                 <button id="addUserBtn" class="small secondary">➕ 用户</button>
@@ -100,7 +121,7 @@
         "结构性存款", "通知存款", "理财产品", "货币基金", "股票基金", "其他"
     ];
 
-    // ======================== IndexedDB 封装（含 rate_history）================
+    // ======================== IndexedDB ========================
     const DB_NAME = 'DepositDB';
     const DB_VERSION = 3;
     let db = null;
@@ -134,7 +155,7 @@
     async function getUsers() {
         const store = await getStore('users');
         const all = await new Promise(resolve => { const req = store.getAll(); req.onsuccess = () => resolve(req.result); });
-        return all.map(u => u.name);   // 没有用户时返回空数组
+        return all.map(u => u.name);
     }
 
     async function addUser(name) {
@@ -183,7 +204,7 @@
 
     // ---------- 存款 ----------
     async function getDeposits(user) {
-        if (!user) return await getAllDeposits();   // 新增这一行
+        if (!user) return await getAllDeposits();
         const store = await getStore('deposits');
         const index = store.index('user');
         const items = await new Promise(resolve => { const req = index.getAll(user); req.onsuccess = () => resolve(req.result); });
@@ -208,7 +229,6 @@
             savedId = await new Promise(resolve => { const req = store.add(deposit); req.onsuccess = () => resolve(req.result); });
             deposit.id = savedId;
         }
-        // 自动维护利率历史：新存款且有起始日和利率 -> 添加初始记录
         if (isNew && deposit.startDate && deposit.rate != null && !isNaN(deposit.rate)) {
             const rateStore = await getStore('rate_history', 'readwrite');
             await rateStore.add({ deposit_id: savedId, effective_date: deposit.startDate, interest_rate: deposit.rate });
@@ -219,7 +239,6 @@
             if (existing.length === 0) {
                 await rateStore.add({ deposit_id: savedId, effective_date: deposit.startDate, interest_rate: deposit.rate });
             } else {
-                // 更新第一条记录的利率和日期（简单处理）
                 const first = existing[0];
                 first.interest_rate = deposit.rate;
                 first.effective_date = deposit.startDate;
@@ -242,7 +261,6 @@
         for (let id of ids) await deleteDeposit(id);
     }
 
-    // 解锁存款
     async function unlockDeposit(id) {
         const store = await getStore('deposits', 'readwrite');
         const dep = await new Promise(resolve => { const req = store.get(id); req.onsuccess = () => resolve(req.result); });
@@ -273,13 +291,11 @@
         await store.delete(rateId);
     }
 
-    // ---------- 日期转换（增强兼容性） ----------
+    // ---------- 日期转换 ----------
     function parseDate(dateStr) {
         if (!dateStr) return null;
-        // 尝试多种格式
         let d = new Date(dateStr);
         if (!isNaN(d)) return d;
-        // 处理 YYYY/MM/DD 或 YYYY-MM-DD
         let parts = dateStr.split(/[-\/]/);
         if (parts.length === 3) {
             let year = parseInt(parts[0]);
@@ -288,7 +304,6 @@
             d = new Date(year, month, day);
             if (!isNaN(d)) return d;
         }
-        // 处理 YYYYMMDD
         if (/^\d{8}$/.test(dateStr)) {
             let year = parseInt(dateStr.slice(0,4));
             let month = parseInt(dateStr.slice(4,6)) - 1;
@@ -304,17 +319,17 @@
         return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
     }
 
-    // ---------- 分段利息计算（完全移植文件1逻辑） ----------
+    // ---------- 利息计算（修复版）----------
     async function calculateInterest(deposit, asOfDate = null) {
         const { startDate, maturityDate, amount, rate, interestType, id } = deposit;
         if (!startDate || amount <= 0 || rate == null || isNaN(rate)) return 0;
         const start = parseDate(startDate);
         if (!start) return 0;
-        const maturity = maturityDate ? parseDate(maturityDate) : null;
-        const asOf = asOfDate ? (typeof asOfDate === 'string' ? parseDate(asOfDate) : asOfDate) : new Date();
-        if (!asOf) return 0;
-        let end = maturity ? (asOf < maturity ? asOf : maturity) : asOf;
-        if (end <= start) return 0;
+        let asOf = asOfDate ? (typeof asOfDate === 'string' ? parseDate(asOfDate) : asOfDate) : new Date();
+        if (!asOf) asOf = new Date();
+        let end = maturityDate ? parseDate(maturityDate) : null;
+        let actualEnd = end ? (asOf < end ? asOf : end) : asOf;
+        if (actualEnd <= start) return 0;
 
         let periods = [];
         if (id) {
@@ -325,20 +340,20 @@
                     let eff = parseDate(h.effective_date);
                     if (eff && eff > start) {
                         if (prevDate < eff) {
-                            periods.push({ start: prevDate, end: eff < end ? eff : end, rate: h.interest_rate });
+                            periods.push({ start: prevDate, end: eff < actualEnd ? eff : actualEnd, rate: h.interest_rate });
                         }
                         prevDate = eff;
                     }
                 }
-                if (prevDate < end) {
+                if (prevDate < actualEnd) {
                     let lastRate = hist[hist.length-1].interest_rate;
-                    periods.push({ start: prevDate, end: end, rate: lastRate });
+                    periods.push({ start: prevDate, end: actualEnd, rate: lastRate });
                 }
             } else {
-                periods.push({ start, end, rate });
+                periods.push({ start, end: actualEnd, rate });
             }
         } else {
-            periods.push({ start, end, rate });
+            periods.push({ start, end: actualEnd, rate });
         }
 
         let total = 0;
@@ -357,7 +372,10 @@
 
     async function calculateTotalInterest(deposit) {
         if (!deposit.maturityDate) return 0;
-        return await calculateInterest(deposit, deposit.maturityDate);
+        // 直接使用到期日作为结束日期
+        const mat = parseDate(deposit.maturityDate);
+        if (!mat) return 0;
+        return await calculateInterest(deposit, mat);
     }
 
     async function enrichDeposits(deposits) {
@@ -370,7 +388,7 @@
         return deposits;
     }
 
-    // 统计（用于图表）
+    // 统计
     async function getStats(user) {
         const deposits = await getDeposits(user);
         const enriched = await enrichDeposits(deposits);
@@ -392,7 +410,7 @@
     async function getUpcomingMaturities(user, days = 7) {
         const deposits = await getDeposits(user);
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // 归一化
+        today.setHours(0,0,0,0);
         const future = new Date(today);
         future.setDate(today.getDate() + days);
         return deposits.filter(d => {
@@ -406,7 +424,7 @@
     async function getMonthlyMaturityForecast(user) {
         const deposits = await getDeposits(user);
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        today.setHours(0,0,0,0);
         const endDate = new Date(today);
         endDate.setDate(today.getDate() + 365);
         const monthly = {};
@@ -422,7 +440,7 @@
         return monthly;
     }
 
-    // ======================== 备份与恢复（保留Cordova功能） ========================
+    // ======================== 备份与恢复 ========================
     function showToast(msg, duration = 5000) {
         let toast = document.querySelector('.toast-msg');
         if (!toast) { toast = document.createElement('div'); toast.className = 'toast-msg'; document.body.appendChild(toast); }
@@ -520,18 +538,15 @@
         }
     }
 
-    // ======================== 增强的 CSV 导入（修复利率和日期） ========================
+    // ======================== CSV 导入 ========================
     async function importFromCSV(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = async (e) => {
                 let text = e.target.result;
-                // 移除 BOM
                 if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
                 const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
                 if (lines.length < 2) return reject('文件内容为空');
-                
-                // 解析 CSV 行（处理引号）
                 const parseCSVLine = (line) => {
                     const result = [];
                     let inQuote = false;
@@ -551,9 +566,7 @@
                     result.push(current.trim());
                     return result;
                 };
-                
                 const headers = parseCSVLine(lines[0]);
-                // 列名映射（兼容中英文）
                 const colMap = {
                     userIdx: headers.findIndex(h => h.includes('用户')),
                     bankIdx: headers.findIndex(h => h.includes('银行')),
@@ -566,12 +579,10 @@
                     notesIdx: headers.findIndex(h => h.includes('备注')),
                     unlockIdx: headers.findIndex(h => h.includes('解锁状态'))
                 };
-                // 备选
                 if (colMap.amountIdx === -1) colMap.amountIdx = headers.findIndex(h => h.includes('金额(元)'));
                 if (colMap.startIdx === -1) colMap.startIdx = headers.findIndex(h => h.includes('起始日期'));
                 if (colMap.rateIdx === -1) colMap.rateIdx = headers.findIndex(h => h.includes('利率(%)'));
                 if (colMap.intTypeIdx === -1) colMap.intTypeIdx = headers.findIndex(h => h.includes('计息类型'));
-                
                 const existingUsers = await getUsers();
                 let added = 0;
                 const affectedUsers = new Set();
@@ -584,26 +595,18 @@
                     if (!existingUsers.includes(userName)) { await addUser(userName); existingUsers.push(userName); }
                     const bank = fields[colMap.bankIdx]?.trim() || '';
                     const depositType = fields[colMap.nameIdx]?.trim() || '';
-                    let amount = parseFloat(fields[colMap.amountIdx]?.replace(/,/g, '').trim());
+                    let amountRaw = fields[colMap.amountIdx]?.replace(/,/g, '').trim();
+                    let amount = parseFloat(amountRaw);
                     if (isNaN(amount) || amount <= 0) continue;
                     let startDateRaw = fields[colMap.startIdx]?.trim();
                     let startDate = null;
-                    if (startDateRaw) {
-                        let d = parseDate(startDateRaw);
-                        if (d) startDate = formatDate(d);
-                    }
+                    if (startDateRaw) { let d = parseDate(startDateRaw); if (d) startDate = formatDate(d); }
                     let maturityDateRaw = fields[colMap.maturityIdx]?.trim();
                     let maturityDate = null;
-                    if (maturityDateRaw) {
-                        let d = parseDate(maturityDateRaw);
-                        if (d) maturityDate = formatDate(d);
-                    }
+                    if (maturityDateRaw) { let d = parseDate(maturityDateRaw); if (d) maturityDate = formatDate(d); }
                     let rateRaw = fields[colMap.rateIdx]?.trim();
                     let rate = null;
-                    if (rateRaw && rateRaw !== '') {
-                        let r = parseFloat(rateRaw);
-                        if (!isNaN(r)) rate = r;
-                    }
+                    if (rateRaw && rateRaw !== '') { let r = parseFloat(rateRaw); if (!isNaN(r)) rate = r; }
                     let interestType = fields[colMap.intTypeIdx]?.trim().toLowerCase() || 'simple';
                     interestType = (interestType === 'compound' || interestType === '复利') ? 'compound' : 'simple';
                     const notes = fields[colMap.notesIdx]?.trim() || '';
@@ -619,7 +622,7 @@
         });
     }
 
-    // JSON 全量备份/恢复
+    // JSON 备份/恢复
     async function backupJSON() {
         const users = await getUsers();
         const allDeposits = await getAllDeposits();
@@ -642,7 +645,6 @@
     async function restoreJSON(file) {
         const text = await file.text();
         const data = JSON.parse(text);
-        // 清空现有数据
         const userStore = await getStore('users', 'readwrite');
         const depStore = await getStore('deposits', 'readwrite');
         const rateStore = await getStore('rate_history', 'readwrite');
@@ -656,7 +658,6 @@
         alert('JSON 恢复成功');
     }
 
-    // 修复重复记录
     async function fixDuplicateRecords() {
         const allDepositsAllUsers = await getAllDeposits();
         const groups = new Map();
@@ -681,8 +682,8 @@
         }
     }
 
-    // ======================== UI 渲染与交互 ========================
-    let currentUser = '默认用户';
+    // ======================== UI 渲染 ========================
+    let currentUser = null;
     let allDeposits = [];
     let duplicateIds = new Set();
     let currentFilter = '';
@@ -769,7 +770,6 @@
         select.innerHTML = options;
     }
 
-    // 用户管理模态框（含重命名）
     async function showManageUsersModal() {
         const users = await getUsers();
         const modalDiv = document.createElement('div');
@@ -816,7 +816,7 @@
                     alert(`用户 ${userName} 已删除`);
                     if (currentUser === userName) {
                         const newUsers = await getUsers();
-                        currentUser = newUsers[0] || '默认用户';
+                        currentUser = newUsers[0] || null;
                     }
                     await refreshUserSelector();
                     await refreshData();
@@ -828,7 +828,6 @@
         modalDiv.querySelector('#closeManageModal').onclick = () => modalDiv.remove();
     }
 
-    // 存款编辑模态框（含利率历史）
     async function showDepositModal(deposit = null) {
         const users = await getUsers();
         const modalDiv = document.createElement('div');
@@ -922,13 +921,12 @@
         modalDiv.querySelector('#closeRateModal').onclick = () => modalDiv.remove();
     }
 
-    // 图表模态框（ECharts）
     async function showStatsModal() {
         const stats = await getStats(currentUser);
         const modalDiv = document.createElement('div');
         modalDiv.className = 'modal';
         modalDiv.innerHTML = `<div class="modal-content" style="max-width: 95%; width: 500px;">
-            <h3>📊 统计图表 - ${escapeHtml(currentUser)}</h3>
+            <h3>📊 统计图表 - ${escapeHtml(currentUser === null ? '所有用户合计' : currentUser)}</h3>
             <div style="margin-bottom:12px;">💰 总本金: ¥${stats.totalAmount.toFixed(2)} &nbsp; 💹 当前利息: ¥${stats.totalCurrentInterest.toFixed(2)}</div>
             <div id="holderChart" style="height: 200px;"></div>
             <div id="typeChart" style="height: 200px;"></div>
@@ -966,22 +964,41 @@
         modalDiv.querySelector('#closeStatsBtn').onclick = () => modalDiv.remove();
     }
 
-    // 到期预测柱状图
+    // 到期预测模态框（带关闭按钮）
     async function showForecast() {
         const monthly = await getMonthlyMaturityForecast(currentUser);
         const months = Object.keys(monthly).sort();
-        if (months.length === 0) { alert('未来12个月无到期存款'); return; }
+        if (months.length === 0) {
+            alert('未来12个月无到期存款');
+            return;
+        }
         const amounts = months.map(m => monthly[m]);
-        const win = window.open();
-        win.document.write(`
-            <html><head><title>到期资金预测</title><script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script></head>
-            <body style="margin:0;padding:16px;"><div id="chart" style="width:100%;height:100vh;"></div>
-            <script>var chart = echarts.init(document.getElementById('chart'));
-            chart.setOption({ title: { text: '未来12个月到期资金预测', left: 'center' }, tooltip: { trigger: 'axis' },
-                xAxis: { type: 'category', data: ${JSON.stringify(months)} },
-                yAxis: { type: 'value', name: '金额(元)' },
-                series: [{ type: 'bar', data: ${JSON.stringify(amounts)}, itemStyle: { color: '#3498db' } }] });<\/script>
-        `);
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal';
+        modalDiv.style.zIndex = '2000';
+        modalDiv.innerHTML = `
+            <div class="modal-content" style="max-width: 95%; width: 500px;">
+                <h3 style="text-align:center;">📈 未来12个月到期资金预测</h3>
+                <div id="forecastChart" style="height: 300px; width: 100%;"></div>
+                <div style="display: flex; justify-content: center; margin-top: 16px;">
+                    <button id="closeForecastBtn" class="secondary small">关闭</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalDiv);
+        const chartDom = modalDiv.querySelector('#forecastChart');
+        const chart = echarts.init(chartDom);
+        chart.setOption({
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            xAxis: { type: 'category', data: months, axisLabel: { rotate: 30 } },
+            yAxis: { type: 'value', name: '金额(元)' },
+            series: [{
+                type: 'bar', data: amounts,
+                itemStyle: { color: '#3498db', borderRadius: [4,4,0,0] },
+                label: { show: true, position: 'top', formatter: (p) => (p.value / 10000).toFixed(1) + '万' }
+            }]
+        });
+        modalDiv.querySelector('#closeForecastBtn').onclick = () => modalDiv.remove();
     }
 
     async function checkReminders(manual = false) {
@@ -996,7 +1013,6 @@
         } else if (manual) alert('未来7天内没有即将到期的存款');
     }
 
-    // 导出PDF
     async function exportPDF() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('landscape');
@@ -1008,7 +1024,7 @@
             head: [['银行','类型','持有人','金额','起始日','到期日','利率','利息类型','当前利息','到期利息']],
             body: body
         });
-        doc.save(`存款报表_${currentUser}_${new Date().toISOString().slice(0,10)}.pdf`);
+        doc.save(`存款报表_${currentUser === null ? '合计' : currentUser}_${new Date().toISOString().slice(0,10)}.pdf`);
     }
 
     function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
@@ -1020,7 +1036,7 @@
         const deposits = await getDeposits(currentUser);
         const csvContent = generateCSVBlob(currentUser, deposits);
         const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
-        const filename = `存款备份_${currentUser}_${timestamp}.csv`;
+        const filename = `存款备份_${currentUser === null ? '合计' : currentUser}_${timestamp}.csv`;
         if (window.cordova && cordovaReady) await exportWithCordova(csvContent, filename, 'text/csv');
         else if (window.cordova && !cordovaReady) showToast('Cordova 未就绪，请稍后重试', 2000);
         else fallbackDownload(csvContent, filename, 'text/csv');
@@ -1029,11 +1045,8 @@
     function bindEvents() {
         document.getElementById('userSelect').addEventListener('change', async (e) => {
             const val = e.target.value;
-            if (val === '__all__') {
-                currentUser = null;
-            } else {
-                currentUser = val;
-            }
+            if (val === '__all__') currentUser = null;
+            else currentUser = val;
             await refreshData();
         });
         document.getElementById('addUserBtn').addEventListener('click', async () => { const name = prompt('新用户名'); if (name && await addUser(name)) { await refreshUserSelector(); await refreshData(); } else alert('添加失败或用户已存在'); });
@@ -1048,7 +1061,6 @@
         document.getElementById('backupJsonBtn').addEventListener('click', backupJSON);
         document.getElementById('openBackupFolderBtn').addEventListener('click', openBackupFolder);
         
-        // 增加PDF导出按钮
         const pdfBtn = document.createElement('button');
         pdfBtn.id = 'pdfBtn';
         pdfBtn.className = 'small';
@@ -1076,9 +1088,7 @@
         document.getElementById('restoreJsonLabel').addEventListener('click', () => jsonInput.click());
         jsonInput.addEventListener('change', async (e) => {
             if (!e.target.files.length) return;
-            try {
-                await restoreJSON(e.target.files[0]);
-            } catch (err) { alert('JSON恢复失败：' + err.message); }
+            try { await restoreJSON(e.target.files[0]); } catch (err) { alert('JSON恢复失败：' + err.message); }
             jsonInput.value = '';
         });
     }
@@ -1086,12 +1096,8 @@
     (async function init() {
         await openDB();
         let users = await getUsers();
-        // 如果没有任何真实用户，则创建一个“我的存款”用户
-        if (users.length === 0) {
-            await addUser('我的存款');
-            users = await getUsers();
-        }
-        currentUser = null;   // 默认为所有用户合计视图
+        if (users.length === 0) await addUser('我的存款');
+        currentUser = null;
         await refreshUserSelector();
         await refreshData();
         bindEvents();
