@@ -1,7 +1,7 @@
-name: Build Deposit Manager APK (Enhanced Backup)
+name: Build Deposit Manager APK
 
 on:
-  workflow_dispatch:        # 允许手动触发
+  workflow_dispatch:        # 手动触发（在 GitHub Actions 页面点击按钮）
   push:
     paths:
       - 'index.html'        # 当 index.html 更新时自动构建
@@ -33,43 +33,39 @@ jobs:
 
       - name: Build APK with Cordova
         run: |
-          # 创建 Cordova 项目
+          # 1. 创建 Cordova 项目
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
           
-          # 复制您提供的 index.html 到 www 目录
+          # 2. 覆盖默认的 index.html
           cp ../index.html www/index.html
           
-          # 添加必需插件（文件操作 + 权限管理）
+          # 3. 添加必需插件
+          #    - 文件读写权限与操作
+          #    - Android 运行时权限请求
+          #    - 打开文件夹（可选，用于“打开备份文件夹”功能）
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-android-permissions
+          cordova plugin add cordova-plugin-file-opener2
           
-          # 可选：添加设备就绪事件增强（无需额外插件，已有代码监听 deviceready）
-          
-          # 配置 Android 平台
+          # 4. 添加 Android 平台
           cordova platform add android
           
-          # 修改 config.xml 添加存储权限声明（确保 AndroidManifest 中包含权限）
-          # 使用 sed 在 <platform name="android"> 内插入权限配置
-          sed -i '/<platform name="android">/a \        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n        </config-file>' config.xml
+          # 5. 修改 config.xml：添加存储权限到 AndroidManifest.xml
+          #    使用 sed 在 <platform name="android"> 内部插入权限配置
+          sed -i '/<platform name="android">/a \        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />\n            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n        </config-file>\n        <preference name="AndroidExtraPermissions" value="<uses-permission android:name=&quot;android.permission.WRITE_EXTERNAL_STORAGE&quot; />" />' config.xml
           
-          # 可选：添加 uses-sdk 兼容性（针对 Android 10+ 分区存储，但外部存储仍可用）
-          # 如果希望兼容 Android 11+，可保留 requestLegacyExternalStorage，但不是必须
+          # 6. 设置应用图标和启动画面（可选，使用默认）
+          #    如需自定义，可提前准备图标资源并复制到相应目录
           
-          # 构建 debug APK
+          # 7. 构建 Debug APK（无需签名，可直接安装）
           cordova build android
           
-          # 构建 release APK（若需要签名，可额外配置，此处仅输出 debug 用于测试）
-          # 如需 release，可添加签名步骤，但 debug 已可安装使用
-          
-          # 将生成的 APK 移动到便于上传的位置
+          # 8. 创建输出目录并复制 APK
           mkdir -p ../output
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../output/deposit-manager-debug.apk
           
-          # 如果构建了 release，也复制
-          if [ -f platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-            cp platforms/android/app/build/outputs/apk/release/app-release-unsigned.apk ../output/deposit-manager-unsigned.apk
-          fi
+          # 9. 可选：如果将来配置了签名，可构建 Release APK，此处暂不处理
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v4
