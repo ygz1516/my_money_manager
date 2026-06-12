@@ -392,19 +392,27 @@
     async function getStats(user) {
         const deposits = await getDeposits(user);
         const enriched = await enrichDeposits(deposits);
-        let totalAmount = 0, totalCurrentInterest = 0;
+        let totalAmount = 0, totalCurrentInterest = 0, totalMaturityInterest = 0;
         let byBank = {}, byType = {}, byHolder = {};
         for (let d of enriched) {
             const amt = Number(d.amount);
-            if (!isNaN(amt)) totalAmount += amt;
-            totalCurrentInterest += d.currentInterest || 0;
             if (!isNaN(amt)) {
+                totalAmount += amt;
                 byBank[d.bank] = (byBank[d.bank] || 0) + amt;
                 byType[d.depositType] = (byType[d.depositType] || 0) + amt;
                 byHolder[d.user] = (byHolder[d.user] || 0) + amt;
             }
+            totalCurrentInterest += d.currentInterest || 0;
+            totalMaturityInterest += d.totalInterest || 0;
         }
-        return { totalAmount, totalCurrentInterest, byBank, byType, byHolder, deposits: enriched };
+        // 四舍五入保留两位小数，解决精度问题
+        for (let k in byBank) byBank[k] = Math.round(byBank[k] * 100) / 100;
+        for (let k in byType) byType[k] = Math.round(byType[k] * 100) / 100;
+        for (let k in byHolder) byHolder[k] = Math.round(byHolder[k] * 100) / 100;
+        totalAmount = Math.round(totalAmount * 100) / 100;
+        totalCurrentInterest = Math.round(totalCurrentInterest * 100) / 100;
+        totalMaturityInterest = Math.round(totalMaturityInterest * 100) / 100;
+        return { totalAmount, totalCurrentInterest, totalMaturityInterest, byBank, byType, byHolder, deposits: enriched };
     }
 
     async function getUpcomingMaturities(user, days = 7) {
@@ -927,7 +935,11 @@
         modalDiv.className = 'modal';
         modalDiv.innerHTML = `<div class="modal-content" style="max-width: 95%; width: 500px;">
             <h3>📊 统计图表 - ${escapeHtml(currentUser === null ? '所有用户合计' : currentUser)}</h3>
-            <div style="margin-bottom:12px;">💰 总本金: ¥${stats.totalAmount.toFixed(2)} &nbsp; 💹 当前利息: ¥${stats.totalCurrentInterest.toFixed(2)}</div>
+            <div style="margin-bottom:12px;">
+                💰 总本金: ¥${stats.totalAmount.toFixed(2)} &nbsp;
+                💹 当前利息: ¥${stats.totalCurrentInterest.toFixed(2)} &nbsp;
+                📅 到期利息: ¥${stats.totalMaturityInterest.toFixed(2)}
+            </div>
             <div id="holderChart" style="height: 200px;"></div>
             <div id="typeChart" style="height: 200px;"></div>
             <div id="bankChart" style="height: 200px;"></div>
@@ -939,7 +951,7 @@
             const chart = echarts.init(modalDiv.querySelector(`#${id}`));
             chart.setOption({
                 title: { text: title, left: 'center', textStyle: { fontSize: 12 } },
-                tooltip: { trigger: 'item' },
+                tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
                 series: [{ type: 'pie', radius: '55%', data: Object.entries(data).map(([n,v]) => ({ name: n, value: v })), label: { show: true, formatter: '{b}: {d}%' } }]
             });
         };
@@ -955,7 +967,7 @@
                 data: [[d.startDate, d.amount], [d.maturityDate, d.amount]],
                 lineStyle: { width: 3, color: '#3498db' },
                 symbol: 'circle', symbolSize: 6,
-                tooltip: { formatter: `金额: ${d.amount}元` }
+                tooltip: { formatter: `金额: ¥${d.amount.toFixed(2)}` }
             }));
             timeline.setOption({ title: { text: '存款时间线', left: 'center' }, tooltip: { trigger: 'axis' }, xAxis: { type: 'time' }, yAxis: { type: 'value', name: '金额(元)' }, series });
         } else {
