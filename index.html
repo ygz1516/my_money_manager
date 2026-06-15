@@ -93,8 +93,30 @@
         <div class="filter-group"><span>📂 类型</span><select id="filterType"><option value="">所有类型</option></select></div>
         <div class="filter-group"><span>👤 持有人</span><select id="filterHolder"><option value="">所有持有人</option></select></div>
         <div class="filter-group"><span>💰 金额范围</span><div style="display:flex; gap:6px;"><input type="number" id="minAmount" placeholder="最小" style="width:90px;"><input type="number" id="maxAmount" placeholder="最大" style="width:90px;"></div></div>
-        <div class="filter-group"><span>📅 存入日期区间</span><div class="date-range"><input type="date" id="startDateFrom" placeholder="起始日≥"><input type="date" id="startDateTo" placeholder="起始日≤"></div></div>
-        <div class="filter-group"><span>⏳ 到期日期区间</span><div class="date-range"><input type="date" id="maturityDateFrom" placeholder="到期日≥"><input type="date" id="maturityDateTo" placeholder="到期日≤"></div></div>
+        <div class="filter-group"><span>📅 存入日期区间</span>
+            <div class="date-range">
+                <input type="date" id="startDateFrom" placeholder="起始日≥">
+                <input type="date" id="startDateTo" placeholder="起始日≤">
+            </div>
+            <div style="margin-top:4px;">
+                <span style="font-size:0.7rem;">快捷年份：</span>
+                <select id="startYearQuick" style="width:80px;">
+                    <option value="">全部</option>
+                </select>
+            </div>
+        </div>
+        <div class="filter-group"><span>⏳ 到期日期区间</span>
+            <div class="date-range">
+                <input type="date" id="maturityDateFrom" placeholder="到期日≥">
+                <input type="date" id="maturityDateTo" placeholder="到期日≤">
+            </div>
+            <div style="margin-top:4px;">
+                <span style="font-size:0.7rem;">快捷年份：</span>
+                <select id="maturityYearQuick" style="width:80px;">
+                    <option value="">全部</option>
+                </select>
+            </div>
+        </div>
         <button id="clearFiltersBtn" class="small secondary" style="background:#9aaebf;">🗑️ 清除所有筛选</button>
     </div>
         <div class="search-bar">
@@ -971,8 +993,19 @@
                 <label>银行</label><input list="bankList" id="modalBank" value="${deposit?.bank || ''}" placeholder="选择或输入银行"><datalist id="bankList">${PRESET_BANKS.map(b => `<option value="${b}">`).join('')}</datalist>
                 <label>存款类型</label><input list="typeList" id="modalType" value="${deposit?.depositType || ''}" placeholder="选择或输入类型"><datalist id="typeList">${PRESET_DEPOSIT_TYPES.map(t => `<option value="${t}">`).join('')}</datalist>
                 <label>金额 (元)</label><input id="modalAmount" type="number" step="0.01" value="${deposit?.amount || ''}">
-                <label>起始日期 (YYYY-MM-DD)</label><input id="modalStart" placeholder="2024-01-01" value="${deposit?.startDate || ''}">
-                <label>到期日期 (可选)</label><input id="modalMaturity" placeholder="2026-01-01" value="${deposit?.maturityDate || ''}">
+                <label>起始日期</label><input type="date" id="modalStart" value="${deposit?.startDate || ''}">
+                <div style="display:flex; gap:12px; align-items:flex-end;">
+                    <div style="flex:1;"><label>存期（年）</label>
+                        <select id="modalTermYear">
+                            <option value="0">不自动计算</option>
+                            <option value="1">1年</option>
+                            <option value="2">2年</option>
+                            <option value="3">3年</option>
+                            <option value="5">5年</option>
+                        </select>
+                    </div>
+                    <div style="flex:2;"><label>到期日期</label><input type="date" id="modalMaturity" value="${deposit?.maturityDate || ''}"></div>
+                </div>
                 <label>年利率 (%)</label><input id="modalRate" type="number" step="0.01" value="${deposit?.rate ?? ''}">
                 <label>计息类型</label><select id="modalInterestType"><option value="simple" ${deposit?.interestType === 'simple' ? 'selected' : ''}>单利</option><option value="compound" ${deposit?.interestType === 'compound' ? 'selected' : ''}>复利</option></select>
                 <label>备注</label><textarea id="modalNotes">${deposit?.notes || ''}</textarea>
@@ -984,6 +1017,39 @@
         const closeModal = () => modalDiv.remove();
         if (deposit) {
             modalDiv.querySelector('#rateHistoryBtn').onclick = async () => { closeModal(); await showRateHistoryModal(deposit.id); };
+        }
+        const startDateInput = modalDiv.querySelector('#modalStart');
+        const termSelect = modalDiv.querySelector('#modalTermYear');
+        const maturityInput = modalDiv.querySelector('#modalMaturity');
+
+        function autoSetMaturity() {
+            const startVal = startDateInput.value;
+            const term = parseInt(termSelect.value);
+            if (term > 0 && startVal) {
+                const startDate = new Date(startVal);
+                if (!isNaN(startDate)) {
+                    startDate.setFullYear(startDate.getFullYear() + term);
+                    const year = startDate.getFullYear();
+                    const month = String(startDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(startDate.getDate()).padStart(2, '0');
+                    maturityInput.value = `${year}-${month}-${day}`;
+                }
+            }
+        }
+
+        startDateInput.addEventListener('change', autoSetMaturity);
+        termSelect.addEventListener('change', autoSetMaturity);
+
+        // 如果是编辑已有存款，尝试反推存期并选中
+        if (deposit && deposit.startDate && deposit.maturityDate) {
+            const start = new Date(deposit.startDate);
+            const end = new Date(deposit.maturityDate);
+            if (!isNaN(start) && !isNaN(end)) {
+                const diffYears = end.getFullYear() - start.getFullYear();
+                if ([1,2,3,5].includes(diffYears)) {
+                    termSelect.value = diffYears;
+                }
+            }
         }
         const saveBtn = modalDiv.querySelector('#modalSave');
         let saving = false;
@@ -1244,7 +1310,21 @@
     }
 
     function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
-
+    function populateYearSelectors() {
+            const currentYear = new Date().getFullYear();
+            const years = [];
+            for (let y = currentYear - 5; y <= currentYear + 5; y++) {
+                years.push(y);
+            }
+            const startSelect = document.getElementById('startYearQuick');
+            const maturitySelect = document.getElementById('maturityYearQuick');
+            if (startSelect) {
+                startSelect.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
+            }
+            if (maturitySelect) {
+                maturitySelect.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
+            }
+        }
     let cordovaReady = false;
     document.addEventListener('deviceready', () => { cordovaReady = true; showToast('📱 存款管家已就绪，备份将保存到 Download/存款管家备份', 3000); }, false);
 
@@ -1307,7 +1387,35 @@
             try { await restoreJSON(e.target.files[0]); } catch (err) { alert('JSON恢复失败：' + err.message); }
             jsonInput.value = '';
         });
-
+        const startYearQuick = document.getElementById('startYearQuick');
+        if (startYearQuick) {
+            startYearQuick.addEventListener('change', () => {
+                const year = startYearQuick.value;
+                if (year) {
+                    document.getElementById('startDateFrom').value = `${year}-01-01`;
+                    document.getElementById('startDateTo').value = `${year}-12-31`;
+                } else {
+                    document.getElementById('startDateFrom').value = '';
+                    document.getElementById('startDateTo').value = '';
+                }
+                updateList();  // 刷新列表
+            });
+        }
+        // 到期年份快捷选择
+        const maturityYearQuick = document.getElementById('maturityYearQuick');
+        if (maturityYearQuick) {
+            maturityYearQuick.addEventListener('change', () => {
+                const year = maturityYearQuick.value;
+                if (year) {
+                    document.getElementById('maturityDateFrom').value = `${year}-01-01`;
+                    document.getElementById('maturityDateTo').value = `${year}-12-31`;
+                } else {
+                    document.getElementById('maturityDateFrom').value = '';
+                    document.getElementById('maturityDateTo').value = '';
+                }
+                updateList();
+            });
+        }
         // 筛选器事件监听
         const filterElements = ['filterBank', 'filterType', 'filterHolder', 'minAmount', 'maxAmount', 'searchInput', 'startDateFrom', 'startDateTo', 'maturityDateFrom', 'maturityDateTo'];
         filterElements.forEach(id => {
@@ -1338,6 +1446,8 @@
                 document.getElementById('startDateTo').value = '';
                 document.getElementById('maturityDateFrom').value = '';
                 document.getElementById('maturityDateTo').value = '';
+                document.getElementById('startYearQuick') && (document.getElementById('startYearQuick').value = '');
+                document.getElementById('maturityYearQuick') && (document.getElementById('maturityYearQuick').value = '');
                 updateList();
             });
         }
@@ -1355,6 +1465,7 @@
         document.getElementById('startDateTo').value = '';
         document.getElementById('maturityDateFrom').value = '';
         document.getElementById('maturityDateTo').value = '';
+        populateYearSelectors();
         checkReminders(false);
         setInterval(() => checkReminders(false), 24*3600*1000);
     })();
