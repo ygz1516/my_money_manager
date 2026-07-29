@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>存款管家 · 最终修复版</title>
+    <title>存款管家 · 增强存期版</title>
     <style>
         * { box-sizing: border-box; }
         body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; margin: 0; padding: 16px; padding-bottom: 80px; }
@@ -59,7 +59,6 @@
             }
         }
         .chart-card { background: #ffffff; border-radius: 24px; padding: 12px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid #edf2f7; }
-        /* 新增筛选栏样式 */
         .filter-group { display: flex; flex-direction: column; gap: 4px; font-size: 0.7rem; font-weight: 600; color: #2c3e50; }
         .filter-group input, .filter-group select { width: auto; min-width: 110px; margin: 0; background: white; }
         .date-range { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -72,7 +71,7 @@
 <div id="app">
     <div class="card">
         <div class="header">
-            <div class="title">💰 存款管家 · 最终修复版</div>
+            <div class="title">💰 存款管家 · 增强存期版</div>
             <div class="flex-between">
                 <select id="userSelect" class="badge" style="background:#ecf0f1; padding:6px;"></select>
                 <button id="addUserBtn" class="small secondary">➕ 用户</button>
@@ -153,9 +152,13 @@
         "重庆银行", "重庆农村商业银行", "微众银行", "蓝海银行", "邮储银行",
         "招商银行", "浦发银行", "中信银行", "其他银行", "微信理财", "支付宝理财", "股票基金"
     ];
+    // 扩展理财产品类型
     const PRESET_DEPOSIT_TYPES = [
         "活期", "一年期定期", "三年期定期", "五年期定期", "大额存单",
-        "结构性存款", "通知存款", "理财产品", "货币基金", "股票基金", "其他"
+        "结构性存款", "通知存款", "理财产品", "货币基金", "股票基金", "其他",
+        "现金管理类理财", "固收类理财", "权益类理财", "混合类理财",
+        "结构性存款(保本)", "结构性存款(非保本)", "大额存单(可转让)", "大额存单(不可转让)",
+        "智能存款", "七日通知存款", "一个月定期", "三个月定期", "六个月定期"
     ];
 
     // ======================== IndexedDB ========================
@@ -409,7 +412,6 @@
 
     async function calculateTotalInterest(deposit) {
         if (!deposit.maturityDate) return 0;
-        // 直接使用到期日作为结束日期
         const mat = parseDate(deposit.maturityDate);
         if (!mat) return 0;
         return await calculateInterest(deposit, mat);
@@ -442,7 +444,6 @@
             totalCurrentInterest += d.currentInterest || 0;
             totalMaturityInterest += d.totalInterest || 0;
         }
-        // 四舍五入保留两位小数，解决精度问题
         for (let k in byBank) byBank[k] = Math.round(byBank[k] * 100) / 100;
         for (let k in byType) byType[k] = Math.round(byType[k] * 100) / 100;
         for (let k in byHolder) byHolder[k] = Math.round(byHolder[k] * 100) / 100;
@@ -690,7 +691,6 @@
     async function restoreJSON(file) {
         const text = await file.text();
         const data = JSON.parse(text);
-        // 使用同一个事务完成清除和写入
         const tx = db.transaction(['users', 'deposits', 'rate_history'], 'readwrite');
         const userStore = tx.objectStore('users');
         const depStore = tx.objectStore('deposits');
@@ -746,13 +746,12 @@
     let allDeposits = [];
     let duplicateIds = new Set();
     let currentFilter = '';
-    let currentFilteredDeposits = [];   // 新增：保存当前筛选后的存款列表
+    let currentFilteredDeposits = [];
     async function refreshData() {
         allDeposits = await getDeposits(currentUser);
         allDeposits = await enrichDeposits(allDeposits);
         allDeposits.sort((a,b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
 
-        // 去重检测
         const keyMap = new Map();
         duplicateIds.clear();
         for (let d of allDeposits) {
@@ -761,7 +760,6 @@
             else keyMap.set(key, d.id);
         }
 
-        // 更新银行筛选器选项
         const bankFilter = document.getElementById('filterBank');
         if (bankFilter) {
             const banks = [...new Set(allDeposits.map(d => d.bank))];
@@ -769,7 +767,6 @@
                 banks.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
         }
 
-        // 更新类型筛选器选项
         const typeFilter = document.getElementById('filterType');
         if (typeFilter) {
             const types = [...new Set(allDeposits.map(d => d.depositType))];
@@ -777,7 +774,6 @@
                 types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
         }
 
-        // 更新持有人筛选器选项
         const holderFilter = document.getElementById('filterHolder');
         if (holderFilter) {
             const holders = [...new Set(allDeposits.map(d => d.user))];
@@ -785,7 +781,6 @@
                 holders.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
         }
 
-        // 调用 updateList 刷新列表（内部会同时更新 currentFilteredDeposits）
         await updateList();
 
         const hasAny = allDeposits.length > 0;
@@ -795,12 +790,9 @@
         if (batchDelete) batchDelete.disabled = !hasAny;
     }
 
-        // ========== 计算当前筛选后的数据（用于统计图表）==========
-
     async function updateList() {
         let filtered = [...allDeposits];
 
-        // 文本搜索
         const searchText = document.getElementById('searchInput').value.toLowerCase();
         if (searchText) {
             filtered = filtered.filter(d =>
@@ -810,37 +802,30 @@
             );
         }
 
-        // 银行筛选
         const filterBank = document.getElementById('filterBank')?.value;
         if (filterBank) filtered = filtered.filter(d => d.bank === filterBank);
 
-        // 类型筛选
         const filterType = document.getElementById('filterType')?.value;
         if (filterType) filtered = filtered.filter(d => d.depositType === filterType);
 
-        // 持有人筛选
         const filterHolder = document.getElementById('filterHolder')?.value;
         if (filterHolder) filtered = filtered.filter(d => d.user === filterHolder);
 
-        // 金额区间筛选
         const minAmount = parseFloat(document.getElementById('minAmount')?.value);
         const maxAmount = parseFloat(document.getElementById('maxAmount')?.value);
         if (!isNaN(minAmount)) filtered = filtered.filter(d => d.amount >= minAmount);
         if (!isNaN(maxAmount)) filtered = filtered.filter(d => d.amount <= maxAmount);
 
-        // 存入日期区间筛选
         const startDateFrom = document.getElementById('startDateFrom')?.value;
         const startDateTo = document.getElementById('startDateTo')?.value;
         if (startDateFrom) filtered = filtered.filter(d => d.startDate && d.startDate >= startDateFrom);
         if (startDateTo) filtered = filtered.filter(d => d.startDate && d.startDate <= startDateTo);
 
-        // 到期日期区间筛选
         const maturityFrom = document.getElementById('maturityDateFrom')?.value;
         const maturityTo = document.getElementById('maturityDateTo')?.value;
         if (maturityFrom) filtered = filtered.filter(d => d.maturityDate && d.maturityDate >= maturityFrom);
         if (maturityTo) filtered = filtered.filter(d => d.maturityDate && d.maturityDate <= maturityTo);
 
-        // 将最终筛选结果保存到全局变量，供统计图表使用
         currentFilteredDeposits = filtered;
 
         const totalAmount = filtered.reduce((s,d) => s + d.amount, 0);
@@ -882,7 +867,7 @@
             selectAll.parentNode.replaceChild(newSelectAll, selectAll);
             newSelectAll.addEventListener('change', (e) => {
                 document.querySelectorAll('.deposit-check').forEach(cb => cb.checked = e.target.checked);
-                updateSelectedStats();  // 新增
+                updateSelectedStats();
             });
         }
         const batchDeleteBtn = document.getElementById('batchDeleteBtn');
@@ -896,7 +881,6 @@
                 if (confirm(`确定要删除选中的 ${ids.length} 条记录吗？`)) { await deleteDeposits(ids); await refreshData(); }
             });
         }
-        // 监听所有勾选变化
         document.querySelectorAll('.deposit-check').forEach(cb => {
             cb.addEventListener('change', updateSelectedStats);
         });
@@ -982,6 +966,16 @@
         modalDiv.querySelector('#closeManageModal').onclick = () => modalDiv.remove();
     }
 
+    // ====== 增强存期：扩展自动计算函数 ======
+    function parseTermValue(termVal) {
+        // 支持 "7d","1m","3m","6m","1y","2y","3y","5y" 及 "0"
+        if (termVal === '0') return null;
+        const match = termVal.match(/^(\d+)([dmy])$/);
+        if (!match) return null;
+        return { num: parseInt(match[1]), unit: match[2] };
+    }
+
+    // ====== 修改模态框中的存期下拉和自动计算 ======
     async function showDepositModal(deposit = null) {
         const users = await getUsers();
         const modalDiv = document.createElement('div');
@@ -995,13 +989,17 @@
                 <label>金额 (元)</label><input id="modalAmount" type="number" step="0.01" value="${deposit?.amount || ''}">
                 <label>起始日期</label><input type="date" id="modalStart" value="${deposit?.startDate || ''}">
                 <div style="display:flex; gap:12px; align-items:flex-end;">
-                    <div style="flex:1;"><label>存期（年）</label>
+                    <div style="flex:1;"><label>存期</label>
                         <select id="modalTermYear">
                             <option value="0">不自动计算</option>
-                            <option value="1">1年</option>
-                            <option value="2">2年</option>
-                            <option value="3">3年</option>
-                            <option value="5">5年</option>
+                            <option value="7d">7天</option>
+                            <option value="1m">1个月</option>
+                            <option value="3m">3个月</option>
+                            <option value="6m">6个月</option>
+                            <option value="1y">1年</option>
+                            <option value="2y">2年</option>
+                            <option value="3y">3年</option>
+                            <option value="5y">5年</option>
                         </select>
                     </div>
                     <div style="flex:2;"><label>到期日期</label><input type="date" id="modalMaturity" value="${deposit?.maturityDate || ''}"></div>
@@ -1022,35 +1020,70 @@
         const termSelect = modalDiv.querySelector('#modalTermYear');
         const maturityInput = modalDiv.querySelector('#modalMaturity');
 
+        // 自动计算到期日（增强版）
         function autoSetMaturity() {
             const startVal = startDateInput.value;
-            const term = parseInt(termSelect.value);
-            if (term > 0 && startVal) {
-                const startDate = new Date(startVal);
-                if (!isNaN(startDate)) {
-                    startDate.setFullYear(startDate.getFullYear() + term);
-                    const year = startDate.getFullYear();
-                    const month = String(startDate.getMonth() + 1).padStart(2, '0');
-                    const day = String(startDate.getDate()).padStart(2, '0');
-                    maturityInput.value = `${year}-${month}-${day}`;
-                }
+            const termVal = termSelect.value;
+            if (termVal === '0' || !startVal) return;
+            const startDate = new Date(startVal);
+            if (isNaN(startDate)) return;
+            let newDate = new Date(startDate);
+            const parsed = parseTermValue(termVal);
+            if (!parsed) return;
+            const { num, unit } = parsed;
+            if (unit === 'd') {
+                newDate.setDate(newDate.getDate() + num);
+            } else if (unit === 'm') {
+                newDate.setMonth(newDate.getMonth() + num);
+            } else if (unit === 'y') {
+                newDate.setFullYear(newDate.getFullYear() + num);
             }
+            const year = newDate.getFullYear();
+            const month = String(newDate.getMonth() + 1).padStart(2, '0');
+            const day = String(newDate.getDate()).padStart(2, '0');
+            maturityInput.value = `${year}-${month}-${day}`;
         }
 
         startDateInput.addEventListener('change', autoSetMaturity);
         termSelect.addEventListener('change', autoSetMaturity);
 
-        // 如果是编辑已有存款，尝试反推存期并选中
+        // 反推存期（仅当为整年时匹配，其他保持“不自动计算”）
         if (deposit && deposit.startDate && deposit.maturityDate) {
             const start = new Date(deposit.startDate);
             const end = new Date(deposit.maturityDate);
             if (!isNaN(start) && !isNaN(end)) {
                 const diffYears = end.getFullYear() - start.getFullYear();
-                if ([1,2,3,5].includes(diffYears)) {
-                    termSelect.value = diffYears;
+                const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                const diffDays = Math.floor((end - start) / (1000*3600*24));
+                // 尝试匹配最接近的选项
+                let matched = false;
+                const options = [
+                    { val: '7d', days: 7 },
+                    { val: '1m', days: 30 }, // 近似
+                    { val: '3m', days: 90 },
+                    { val: '6m', days: 180 },
+                    { val: '1y', days: 365 },
+                    { val: '2y', days: 730 },
+                    { val: '3y', days: 1095 },
+                    { val: '5y', days: 1825 }
+                ];
+                for (let opt of options) {
+                    if (Math.abs(diffDays - opt.days) <= 2) { // 允许2天误差
+                        termSelect.value = opt.val;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched && [1,2,3,5].includes(diffYears)) {
+                    termSelect.value = diffYears + 'y';
+                    matched = true;
+                }
+                if (!matched) {
+                    termSelect.value = '0';
                 }
             }
         }
+
         const saveBtn = modalDiv.querySelector('#modalSave');
         let saving = false;
         saveBtn.onclick = async () => {
@@ -1118,6 +1151,7 @@
         };
         modalDiv.querySelector('#closeRateModal').onclick = () => modalDiv.remove();
     }
+
     function enableDoubleClickZoom(chartInstance, titleText) {
         chartInstance.getDom().ondblclick = () => {
             const modalBig = document.createElement('div');
@@ -1149,18 +1183,16 @@
             window.addEventListener('resize', () => newChart.resize());
         };
     }
+
     async function showStatsModal() {
-        // 使用当前筛选后的数据 currentFilteredDeposits，而不是全部数据
         const data = currentFilteredDeposits;
         if (!data.length) {
             alert('当前筛选条件下无存款数据，无法生成统计图表。');
             return;
         }
-        // 计算总金额和利息（基于筛选后的数据）
         const totalAmount = data.reduce((s, d) => s + d.amount, 0);
         const totalCurr = data.reduce((s, d) => s + (d.currentInterest || 0), 0);
         const totalMat = data.reduce((s, d) => s + (d.totalInterest || 0), 0);
-        // 计算分布
         const byHolder = {}, byType = {}, byBank = {};
         data.forEach(d => {
             byHolder[d.user] = (byHolder[d.user] || 0) + d.amount;
@@ -1168,7 +1200,6 @@
             byBank[d.bank] = (byBank[d.bank] || 0) + d.amount;
         });
 
-        // 月度趋势数据：存入金额 vs 到期金额
         const monthMap = new Map();
         data.forEach(d => {
             if (d.startDate) {
@@ -1188,7 +1219,6 @@
         const depositData = months.map(m => monthMap.get(m).deposit);
         const maturityData = months.map(m => monthMap.get(m).maturity);
 
-        // 创建模态框
         const modalDiv = document.createElement('div');
         modalDiv.className = 'modal';
         modalDiv.innerHTML = `<div class="modal-content" style="max-width: 95%; width: 700px;">
@@ -1206,7 +1236,6 @@
         </div>`;
         document.body.appendChild(modalDiv);
 
-        // 绘制饼图的辅助函数（带双击放大）
         const drawPie = (id, title, dataObj) => {
             const chart = echarts.init(modalDiv.querySelector(`#${id}`));
             chart.setOption({
@@ -1224,7 +1253,6 @@
         drawPie('typeChart', '存款类型分布', byType);
         drawPie('bankChart', '银行分布', byBank);
 
-        // 绘制月度趋势图
         if (months.length) {
             const trendChart = echarts.init(modalDiv.querySelector('#trendChart'));
             trendChart.setOption({
@@ -1245,7 +1273,6 @@
         modalDiv.querySelector('#closeStatsBtn').onclick = () => modalDiv.remove();
     }
 
-    // 到期预测模态框（带关闭按钮）
     async function showForecast() {
         const monthly = await getMonthlyMaturityForecast(currentUser);
         const months = Object.keys(monthly).sort();
@@ -1279,7 +1306,7 @@
                 label: { show: true, position: 'top', formatter: (p) => (p.value / 10000).toFixed(1) + '万' }
             }]
         });
-        enableDoubleClickZoom(chart, '到期预测');   // 新增这一行
+        enableDoubleClickZoom(chart, '到期预测');
         modalDiv.querySelector('#closeForecastBtn').onclick = () => modalDiv.remove();
     }
 
@@ -1310,21 +1337,23 @@
     }
 
     function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+
     function populateYearSelectors() {
-            const currentYear = new Date().getFullYear();
-            const years = [];
-            for (let y = currentYear - 5; y <= currentYear + 5; y++) {
-                years.push(y);
-            }
-            const startSelect = document.getElementById('startYearQuick');
-            const maturitySelect = document.getElementById('maturityYearQuick');
-            if (startSelect) {
-                startSelect.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
-            }
-            if (maturitySelect) {
-                maturitySelect.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
-            }
+        const currentYear = new Date().getFullYear();
+        const years = [];
+        for (let y = currentYear - 5; y <= currentYear + 5; y++) {
+            years.push(y);
         }
+        const startSelect = document.getElementById('startYearQuick');
+        const maturitySelect = document.getElementById('maturityYearQuick');
+        if (startSelect) {
+            startSelect.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
+        }
+        if (maturitySelect) {
+            maturitySelect.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
+        }
+    }
+
     let cordovaReady = false;
     document.addEventListener('deviceready', () => { cordovaReady = true; showToast('📱 存款管家已就绪，备份将保存到 Download/存款管家备份', 3000); }, false);
 
@@ -1387,6 +1416,7 @@
             try { await restoreJSON(e.target.files[0]); } catch (err) { alert('JSON恢复失败：' + err.message); }
             jsonInput.value = '';
         });
+
         const startYearQuick = document.getElementById('startYearQuick');
         if (startYearQuick) {
             startYearQuick.addEventListener('change', () => {
@@ -1398,10 +1428,9 @@
                     document.getElementById('startDateFrom').value = '';
                     document.getElementById('startDateTo').value = '';
                 }
-                updateList();  // 刷新列表
+                updateList();
             });
         }
-        // 到期年份快捷选择
         const maturityYearQuick = document.getElementById('maturityYearQuick');
         if (maturityYearQuick) {
             maturityYearQuick.addEventListener('change', () => {
@@ -1416,7 +1445,7 @@
                 updateList();
             });
         }
-        // 筛选器事件监听
+
         const filterElements = ['filterBank', 'filterType', 'filterHolder', 'minAmount', 'maxAmount', 'searchInput', 'startDateFrom', 'startDateTo', 'maturityDateFrom', 'maturityDateTo'];
         filterElements.forEach(id => {
             const el = document.getElementById(id);
@@ -1431,7 +1460,6 @@
             }
         });
 
-        // 清除筛选按钮
         const clearBtn = document.getElementById('clearFiltersBtn');
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
@@ -1441,7 +1469,6 @@
                 document.getElementById('minAmount').value = '';
                 document.getElementById('maxAmount').value = '';
                 document.getElementById('searchInput').value = '';
-                // 清除日期区间
                 document.getElementById('startDateFrom').value = '';
                 document.getElementById('startDateTo').value = '';
                 document.getElementById('maturityDateFrom').value = '';
