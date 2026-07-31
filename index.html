@@ -187,10 +187,15 @@
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
             request.onerror = () => reject(request.error);
-            request.onsuccess = () => { db = request.result; resolve(db); };
+            request.onsuccess = () => {
+                db = request.result;
+                resolve(db);
+            };
             request.onupgradeneeded = (e) => {
                 const database = e.target.result;
-                if (!database.objectStoreNames.contains('users')) database.createObjectStore('users', { keyPath: 'name' });
+                if (!database.objectStoreNames.contains('users')) {
+                    database.createObjectStore('users', { keyPath: 'name' });
+                }
                 if (!database.objectStoreNames.contains('deposits')) {
                     const store = database.createObjectStore('deposits', { keyPath: 'id', autoIncrement: true });
                     store.createIndex('user', 'user', { unique: false });
@@ -209,44 +214,197 @@
     }
 
     // ---------- 用户操作 ----------
-    async function getUsers() { const store = await getStore('users'); const all = await new Promise(resolve => { const req = store.getAll(); req.onsuccess = () => resolve(req.result); }); return all.map(u => u.name); }
-    async function addUser(name) { if (!name) return false; const users = await getUsers(); if (users.includes(name)) return false; const store = await getStore('users', 'readwrite'); await store.add({ name }); return true; }
-    async function deleteUser(name) { const users = await getUsers(); if (!users.includes(name)) return false; const deposits = await getDeposits(name); if (deposits.length > 0) { alert(`用户 ${name} 有 ${deposits.length} 笔存款，请先删除存款再删除用户。`); return false; } const store = await getStore('users', 'readwrite'); await store.delete(name); return true; }
-    async function renameUser(oldName, newName) { if (!newName || newName === oldName) return false; const users = await getUsers(); if (users.includes(newName)) return false; const userStore = await getStore('users', 'readwrite'); await userStore.delete(oldName); await userStore.add({ name: newName }); const depStore = await getStore('deposits', 'readwrite'); const all = await new Promise(resolve => { const req = depStore.getAll(); req.onsuccess = () => resolve(req.result); }); for (let d of all) { if (d.user === oldName) { d.user = newName; await depStore.put(d); } } return true; }
+    async function getUsers() {
+        const store = await getStore('users');
+        const all = await new Promise(resolve => {
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result);
+        });
+        return all.map(u => u.name);
+    }
+
+    async function addUser(name) {
+        if (!name) return false;
+        const users = await getUsers();
+        if (users.includes(name)) return false;
+        const store = await getStore('users', 'readwrite');
+        await store.add({ name });
+        return true;
+    }
+
+    async function deleteUser(name) {
+        const users = await getUsers();
+        if (!users.includes(name)) return false;
+        const deposits = await getDeposits(name);
+        if (deposits.length > 0) {
+            alert(`用户 ${name} 有 ${deposits.length} 笔存款，请先删除存款再删除用户。`);
+            return false;
+        }
+        const store = await getStore('users', 'readwrite');
+        await store.delete(name);
+        return true;
+    }
+
+    async function renameUser(oldName, newName) {
+        if (!newName || newName === oldName) return false;
+        const users = await getUsers();
+        if (users.includes(newName)) return false;
+        const userStore = await getStore('users', 'readwrite');
+        await userStore.delete(oldName);
+        await userStore.add({ name: newName });
+        const depStore = await getStore('deposits', 'readwrite');
+        const all = await new Promise(resolve => {
+            const req = depStore.getAll();
+            req.onsuccess = () => resolve(req.result);
+        });
+        for (let d of all) {
+            if (d.user === oldName) {
+                d.user = newName;
+                await depStore.put(d);
+            }
+        }
+        return true;
+    }
 
     // ---------- 存款操作 ----------
-    async function getDeposits(user) { if (!user) return await getAllDeposits(); const store = await getStore('deposits'); const index = store.index('user'); const items = await new Promise(resolve => { const req = index.getAll(user); req.onsuccess = () => resolve(req.result); }); return items.map(d => ({ ...d, id: d.id })); }
-    async function getAllDeposits() { const store = await getStore('deposits'); const all = await new Promise(resolve => { const req = store.getAll(); req.onsuccess = () => resolve(req.result); }); return all.map(d => ({ ...d, id: d.id })); }
+    async function getDeposits(user) {
+        if (!user) return await getAllDeposits();
+        const store = await getStore('deposits');
+        const index = store.index('user');
+        const items = await new Promise(resolve => {
+            const req = index.getAll(user);
+            req.onsuccess = () => resolve(req.result);
+        });
+        return items.map(d => ({ ...d, id: d.id }));
+    }
+
+    async function getAllDeposits() {
+        const store = await getStore('deposits');
+        const all = await new Promise(resolve => {
+            const req = store.getAll();
+            req.onsuccess = () => resolve(req.result);
+        });
+        return all.map(d => ({ ...d, id: d.id }));
+    }
+
     async function saveDeposit(deposit) {
         const store = await getStore('deposits', 'readwrite');
-        let isNew = !deposit.id, savedId;
-        if (deposit.id) { await store.put(deposit); savedId = deposit.id; }
-        else { delete deposit.id; savedId = await new Promise(resolve => { const req = store.add(deposit); req.onsuccess = () => resolve(req.result); }); deposit.id = savedId; }
+        let isNew = !deposit.id;
+        let savedId;
+        if (deposit.id) {
+            await store.put(deposit);
+            savedId = deposit.id;
+        } else {
+            delete deposit.id;
+            savedId = await new Promise(resolve => {
+                const req = store.add(deposit);
+                req.onsuccess = () => resolve(req.result);
+            });
+            deposit.id = savedId;
+        }
         if (isNew && deposit.startDate && deposit.rate != null && !isNaN(deposit.rate)) {
             const rateStore = await getStore('rate_history', 'readwrite');
-            await rateStore.add({ deposit_id: savedId, effective_date: deposit.startDate, interest_rate: deposit.rate });
+            await rateStore.add({
+                deposit_id: savedId,
+                effective_date: deposit.startDate,
+                interest_rate: deposit.rate
+            });
         }
         return savedId;
     }
-    async function deleteDeposit(id) { const store = await getStore('deposits', 'readwrite'); await store.delete(id); const rateStore = await getStore('rate_history', 'readwrite'); const idx = rateStore.index('deposit_id'); const rates = await new Promise(resolve => { const req = idx.getAll(id); req.onsuccess = () => resolve(req.result); }); for (let r of rates) await rateStore.delete(r.id); }
-    async function deleteDeposits(ids) { for (let id of ids) await deleteDeposit(id); }
-    async function unlockDeposit(id) { const store = await getStore('deposits', 'readwrite'); const dep = await new Promise(resolve => { const req = store.get(id); req.onsuccess = () => resolve(req.result); }); if (dep) { dep.is_unlocked = 1; await store.put(dep); } }
+
+    async function deleteDeposit(id) {
+        const store = await getStore('deposits', 'readwrite');
+        await store.delete(id);
+        const rateStore = await getStore('rate_history', 'readwrite');
+        const idx = rateStore.index('deposit_id');
+        const rates = await new Promise(resolve => {
+            const req = idx.getAll(id);
+            req.onsuccess = () => resolve(req.result);
+        });
+        for (let r of rates) await rateStore.delete(r.id);
+    }
+
+    async function deleteDeposits(ids) {
+        for (let id of ids) await deleteDeposit(id);
+    }
+
+    async function unlockDeposit(id) {
+        const store = await getStore('deposits', 'readwrite');
+        const dep = await new Promise(resolve => {
+            const req = store.get(id);
+            req.onsuccess = () => resolve(req.result);
+        });
+        if (dep) {
+            dep.is_unlocked = 1;
+            await store.put(dep);
+        }
+    }
 
     // ---------- 利率历史 ----------
-    async function getRateHistory(depositId) { const store = await getStore('rate_history'); const idx = store.index('deposit_id'); const items = await new Promise(resolve => { const req = idx.getAll(depositId); req.onsuccess = () => resolve(req.result); }); return items.sort((a,b) => new Date(a.effective_date) - new Date(b.effective_date)); }
-    async function addRateChange(depositId, effectiveDate, interestRate) { const store = await getStore('rate_history', 'readwrite'); const existing = await getRateHistory(depositId); if (existing.some(r => r.effective_date === effectiveDate)) return false; await store.add({ deposit_id: depositId, effective_date: effectiveDate, interest_rate: interestRate }); return true; }
-    async function deleteRateChange(rateId) { const store = await getStore('rate_history', 'readwrite'); await store.delete(rateId); }
+    async function getRateHistory(depositId) {
+        const store = await getStore('rate_history');
+        const idx = store.index('deposit_id');
+        const items = await new Promise(resolve => {
+            const req = idx.getAll(depositId);
+            req.onsuccess = () => resolve(req.result);
+        });
+        return items.sort((a, b) => new Date(a.effective_date) - new Date(b.effective_date));
+    }
+
+    async function addRateChange(depositId, effectiveDate, interestRate) {
+        const store = await getStore('rate_history', 'readwrite');
+        const existing = await getRateHistory(depositId);
+        if (existing.some(r => r.effective_date === effectiveDate)) return false;
+        await store.add({
+            deposit_id: depositId,
+            effective_date: effectiveDate,
+            interest_rate: interestRate
+        });
+        return true;
+    }
+
+    async function deleteRateChange(rateId) {
+        const store = await getStore('rate_history', 'readwrite');
+        await store.delete(rateId);
+    }
 
     // ---------- 日期工具 ----------
-    function parseDate(dateStr) { if (!dateStr) return null; let d = new Date(dateStr); if (!isNaN(d.getTime())) return d; let parts = dateStr.split(/[-\/]/); if (parts.length === 3) { let year = parseInt(parts[0]), month = parseInt(parts[1])-1, day = parseInt(parts[2]); d = new Date(year, month, day); if (!isNaN(d.getTime())) return d; } if (/^\d{8}$/.test(dateStr)) { let year = parseInt(dateStr.slice(0,4)), month = parseInt(dateStr.slice(4,6))-1, day = parseInt(dateStr.slice(6,8)); d = new Date(year, month, day); if (!isNaN(d.getTime())) return d; } return null; }
-    function formatDate(date) { if (!date) return null; return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
-    function todayStart() { const t = new Date(); t.setHours(0,0,0,0); return t; }
+    function parseDate(dateStr) {
+        if (!dateStr) return null;
+        let d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d;
+        let parts = dateStr.split(/[-\/]/);
+        if (parts.length === 3) {
+            let year = parseInt(parts[0]), month = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
+            d = new Date(year, month, day);
+            if (!isNaN(d.getTime())) return d;
+        }
+        if (/^\d{8}$/.test(dateStr)) {
+            let year = parseInt(dateStr.slice(0, 4)), month = parseInt(dateStr.slice(4, 6)) - 1, day = parseInt(dateStr.slice(6, 8));
+            d = new Date(year, month, day);
+            if (!isNaN(d.getTime())) return d;
+        }
+        return null;
+    }
+
+    function formatDate(date) {
+        if (!date) return null;
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    function todayStart() {
+        const t = new Date();
+        t.setHours(0, 0, 0, 0);
+        return t;
+    }
 
     // ---------- 利息计算 ----------
     async function calculateInterest(deposit, asOfDate = null) {
         const { startDate, maturityDate, amount, rate, interestType, id } = deposit;
         if (!startDate || amount <= 0 || rate == null || isNaN(rate)) return 0;
-        const start = parseDate(startDate); if (!start) return 0;
+        const start = parseDate(startDate);
+        if (!start) return 0;
         let asOf = asOfDate ? (typeof asOfDate === 'string' ? parseDate(asOfDate) : asOfDate) : new Date();
         if (!asOf || isNaN(asOf.getTime())) asOf = new Date();
         let end = maturityDate ? parseDate(maturityDate) : null;
@@ -260,47 +418,183 @@
                 for (let h of hist) {
                     let eff = parseDate(h.effective_date);
                     if (eff && eff > start) {
-                        if (prevDate < eff) periods.push({ start: prevDate, end: eff < actualEnd ? eff : actualEnd, rate: h.interest_rate });
+                        if (prevDate < eff) {
+                            periods.push({
+                                start: prevDate,
+                                end: eff < actualEnd ? eff : actualEnd,
+                                rate: h.interest_rate
+                            });
+                        }
                         prevDate = eff;
                     }
                 }
-                if (prevDate < actualEnd) periods.push({ start: prevDate, end: actualEnd, rate: hist[hist.length-1].interest_rate });
-            } else periods.push({ start, end: actualEnd, rate });
-        } else periods.push({ start, end: actualEnd, rate });
+                if (prevDate < actualEnd) {
+                    periods.push({
+                        start: prevDate,
+                        end: actualEnd,
+                        rate: hist[hist.length - 1].interest_rate
+                    });
+                }
+            } else {
+                periods.push({ start, end: actualEnd, rate });
+            }
+        } else {
+            periods.push({ start, end: actualEnd, rate });
+        }
         let total = 0;
         for (let p of periods) {
             if (p.end <= p.start) continue;
-            const days = (p.end - p.start) / (1000*3600*24);
+            const days = (p.end - p.start) / (1000 * 3600 * 24);
             const dailyRate = p.rate / 100 / 365;
-            total += (interestType === 'compound') ? amount * (Math.pow(1 + dailyRate, days) - 1) : dailyRate * amount * days;
+            if (interestType === 'compound') {
+                total += amount * (Math.pow(1 + dailyRate, days) - 1);
+            } else {
+                total += dailyRate * amount * days;
+            }
         }
         return Math.round(total * 100) / 100;
     }
-    async function calculateTotalInterest(deposit) { if (!deposit.maturityDate) return 0; const mat = parseDate(deposit.maturityDate); if (!mat) return 0; return await calculateInterest(deposit, mat); }
-    async function enrichDeposits(deposits) { for (let d of deposits) { d.amount = Number(d.amount); if (isNaN(d.amount)) d.amount = 0; d.currentInterest = await calculateInterest(d); d.totalInterest = await calculateTotalInterest(d); d._matDate = d.maturityDate ? parseDate(d.maturityDate) : null; } return deposits; }
 
-    function getMaturityStatus(dep) { if (!dep._matDate) return 'none'; const now = todayStart(); const mat = dep._matDate; mat.setHours(0,0,0,0); const diffDays = Math.floor((mat - now) / (1000*3600*24)); if (diffDays < 0) return 'expired'; if (diffDays <= 7) return 'urgent'; if (diffDays <= 30) return 'soon'; return 'safe'; }
+    async function calculateTotalInterest(deposit) {
+        if (!deposit.maturityDate) return 0;
+        const mat = parseDate(deposit.maturityDate);
+        if (!mat) return 0;
+        return await calculateInterest(deposit, mat);
+    }
+
+    // 优化：并行计算利息
+    async function enrichDeposits(deposits) {
+        const enriched = await Promise.all(deposits.map(async d => {
+            d.amount = Number(d.amount);
+            if (isNaN(d.amount)) d.amount = 0;
+            d.currentInterest = await calculateInterest(d);
+            d.totalInterest = await calculateTotalInterest(d);
+            d._matDate = d.maturityDate ? parseDate(d.maturityDate) : null;
+            return d;
+        }));
+        return enriched;
+    }
+
+    function getMaturityStatus(dep) {
+        if (!dep._matDate) return 'none';
+        const now = todayStart();
+        const mat = new Date(dep._matDate);
+        mat.setHours(0, 0, 0, 0);
+        const diffDays = Math.floor((mat - now) / (1000 * 3600 * 24));
+        if (diffDays < 0) return 'expired';
+        if (diffDays <= 7) return 'urgent';
+        if (diffDays <= 30) return 'soon';
+        return 'safe';
+    }
 
     // ======================== 备份与恢复 ========================
-    function showToast(msg, duration = 4000) { let toast = document.querySelector('.toast-msg'); if (!toast) { toast = document.createElement('div'); toast.className = 'toast-msg'; document.body.appendChild(toast); } toast.textContent = msg; toast.style.opacity = '1'; clearTimeout(toast._timeout); toast._timeout = setTimeout(() => { toast.style.opacity = '0'; }, duration); }
-    function escapeCSV(cell) { if (cell === undefined || cell === null) return ''; const str = String(cell); if (str.includes(',') || str.includes('"') || str.includes('\n')) return '"' + str.replace(/"/g, '""') + '"'; return str; }
-    function generateCSVBlob(user, deposits) { const sorted = [...deposits].sort((a,b) => (a.maturityDate||'9999-12-31') > (b.maturityDate||'9999-12-31') ? 1 : -1); const rows = []; for (let i=0; i<sorted.length; i++) { const d = sorted[i]; rows.push([ (i+1).toString(), d.user, d.bank, d.depositType, d.amount.toFixed(2), d.startDate||'', d.maturityDate||'', d.rate!=null?d.rate.toFixed(2):'', d.interestType==='compound'?'compound':'simple', d.notes||'', d.is_unlocked?'是':'否' ]); } const csvLines = [ ['序号','用户','银行','存款名称','金额(元)','存入日期','到期日期','利率(%)','计息类型','备注','解锁状态'], ...rows ]; return "\uFEFF" + csvLines.map(row => row.map(escapeCSV).join(',')).join('\n'); }
-    function fallbackDownload(content, filename, mime='text/csv') { const blob = new Blob([content], { type: mime }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href); }
-    async function requestStoragePermission() { if (!window.cordova || !window.cordova.plugins?.permissions) return true; const permissions = window.cordova.plugins.permissions; return new Promise(resolve => { permissions.hasPermission(permissions.WRITE_EXTERNAL_STORAGE, status => { if (status.hasPermission) resolve(true); else permissions.requestPermission(permissions.WRITE_EXTERNAL_STORAGE, result => resolve(result.hasPermission), () => resolve(false)); }, () => resolve(false)); }); }
-    async function exportWithCordova(content, filename, mime='text/csv') {
-        if (!window.cordova || !window.cordova.file) { fallbackDownload(content, filename, mime); return false; }
+    function showToast(msg, duration = 4000) {
+        let toast = document.querySelector('.toast-msg');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'toast-msg';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.opacity = '1';
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(() => {
+            toast.style.opacity = '0';
+        }, duration);
+    }
+
+    function escapeCSV(cell) {
+        if (cell === undefined || cell === null) return '';
+        const str = String(cell);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+    }
+
+    function generateCSVBlob(user, deposits) {
+        const sorted = [...deposits].sort((a, b) => (a.maturityDate || '9999-12-31') > (b.maturityDate || '9999-12-31') ? 1 : -1);
+        const rows = [];
+        for (let i = 0; i < sorted.length; i++) {
+            const d = sorted[i];
+            rows.push([
+                (i + 1).toString(),
+                d.user,
+                d.bank,
+                d.depositType,
+                d.amount.toFixed(2),
+                d.startDate || '',
+                d.maturityDate || '',
+                d.rate != null ? d.rate.toFixed(2) : '',
+                d.interestType === 'compound' ? 'compound' : 'simple',
+                d.notes || '',
+                d.is_unlocked ? '是' : '否'
+            ]);
+        }
+        const csvLines = [
+            ['序号', '用户', '银行', '存款名称', '金额(元)', '存入日期', '到期日期', '利率(%)', '计息类型', '备注', '解锁状态'],
+            ...rows
+        ];
+        return "\uFEFF" + csvLines.map(row => row.map(escapeCSV).join(',')).join('\n');
+    }
+
+    function fallbackDownload(content, filename, mime = 'text/csv') {
+        const blob = new Blob([content], { type: mime });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+    }
+
+    async function requestStoragePermission() {
+        if (!window.cordova || !window.cordova.plugins?.permissions) return true;
+        const permissions = window.cordova.plugins.permissions;
+        return new Promise(resolve => {
+            permissions.hasPermission(permissions.WRITE_EXTERNAL_STORAGE, status => {
+                if (status.hasPermission) {
+                    resolve(true);
+                } else {
+                    permissions.requestPermission(
+                        permissions.WRITE_EXTERNAL_STORAGE,
+                        result => resolve(result.hasPermission),
+                        () => resolve(false)
+                    );
+                }
+            }, () => resolve(false));
+        });
+    }
+
+    async function exportWithCordova(content, filename, mime = 'text/csv') {
+        if (!window.cordova || !window.cordova.file) {
+            fallbackDownload(content, filename, mime);
+            return false;
+        }
         await requestStoragePermission();
         const externalRoot = window.cordova.file.externalRootDirectory;
         const backupDir = externalRoot + 'Download/存款管家备份/';
         const resolveLocalFileSystemURL = window.resolveLocalFileSystemURL;
         return new Promise(resolve => {
-            resolveLocalFileSystemURL(backupDir, dirEntry => writeFileToDir(dirEntry, filename, content, mime, resolve), () => {
+            resolveLocalFileSystemURL(backupDir, dirEntry => {
+                writeFileToDir(dirEntry, filename, content, mime, resolve);
+            }, () => {
                 resolveLocalFileSystemURL(externalRoot + 'Download/', downloadDir => {
-                    downloadDir.getDirectory('存款管家备份', { create: true }, newDir => writeFileToDir(newDir, filename, content, mime, resolve), () => { fallbackDownload(content, filename, mime); resolve(false); });
-                }, () => { fallbackDownload(content, filename, mime); resolve(false); });
+                    downloadDir.getDirectory('存款管家备份', { create: true }, newDir => {
+                        writeFileToDir(newDir, filename, content, mime, resolve);
+                    }, () => {
+                        fallbackDownload(content, filename, mime);
+                        resolve(false);
+                    });
+                }, () => {
+                    fallbackDownload(content, filename, mime);
+                    resolve(false);
+                });
             });
         });
     }
+
     function writeFileToDir(dirEntry, filename, content, mime, callback) {
         dirEntry.getFile(filename, { create: true, exclusive: false }, fileEntry => {
             fileEntry.createWriter(writer => {
@@ -311,11 +605,22 @@
             }, () => callback(false));
         }, () => callback(false));
     }
+
     function openBackupFolder() {
-        if (!window.cordova || !window.cordova.file) { showToast('当前非 Cordova 环境，请手动前往「文件管理」→ Download/存款管家备份', 4000); return; }
+        if (!window.cordova || !window.cordova.file) {
+            showToast('当前非 Cordova 环境，请手动前往「文件管理」→ Download/存款管家备份', 4000);
+            return;
+        }
         const backupDir = window.cordova.file.externalRootDirectory + 'Download/存款管家备份/';
-        if (window.plugins?.fileOpener2) { window.plugins.fileOpener2.open(backupDir, 'application/vnd.android.directory', { error: () => showToast(`请手动前往：${backupDir}`, 4000) }); }
-        else showToast(`请打开手机「文件管理」，进入内部存储 → Download → 存款管家备份 文件夹。`, 5000);
+        if (window.plugins?.fileOpener2) {
+            window.plugins.fileOpener2.open(
+                backupDir,
+                'application/vnd.android.directory',
+                { error: () => showToast(`请手动前往：${backupDir}`, 4000) }
+            );
+        } else {
+            showToast(`请打开手机「文件管理」，进入内部存储 → Download → 存款管家备份 文件夹。`, 5000);
+        }
     }
 
     // ---------- CSV 导入 ----------
@@ -323,31 +628,106 @@
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = async (e) => {
-                let text = e.target.result; if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+                let text = e.target.result;
+                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
                 const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
                 if (lines.length < 2) return reject(new Error('文件内容为空'));
-                const parseCSVLine = (line) => { const result = []; let inQuote = false, current = ''; for (let i=0;i<line.length;i++) { const ch = line[i]; if (ch === '"') { if (inQuote && line[i+1]==='"') { current += '"'; i++; } else inQuote = !inQuote; } else if (ch === ',' && !inQuote) { result.push(current.trim()); current = ''; } else current += ch; } result.push(current.trim()); return result; };
+                const parseCSVLine = (line) => {
+                    const result = [];
+                    let inQuote = false;
+                    let current = '';
+                    for (let i = 0; i < line.length; i++) {
+                        const ch = line[i];
+                        if (ch === '"') {
+                            if (inQuote && line[i + 1] === '"') {
+                                current += '"';
+                                i++;
+                            } else {
+                                inQuote = !inQuote;
+                            }
+                        } else if (ch === ',' && !inQuote) {
+                            result.push(current.trim());
+                            current = '';
+                        } else {
+                            current += ch;
+                        }
+                    }
+                    result.push(current.trim());
+                    return result;
+                };
                 const headers = parseCSVLine(lines[0]);
-                const findIdx = (keywords) => { for (let kw of keywords) { const idx = headers.findIndex(h => h.includes(kw)); if (idx !== -1) return idx; } return -1; };
-                const colMap = { userIdx: findIdx(['用户']), bankIdx: findIdx(['银行']), nameIdx: findIdx(['存款名称']), amountIdx: findIdx(['金额(元)','金额']), startIdx: findIdx(['存入日期','起始日期']), maturityIdx: findIdx(['到期日期']), rateIdx: findIdx(['利率(%)','利率']), intTypeIdx: findIdx(['计息类型']), notesIdx: findIdx(['备注']), unlockIdx: findIdx(['解锁状态']) };
+                const findIdx = (keywords) => {
+                    for (let kw of keywords) {
+                        const idx = headers.findIndex(h => h.includes(kw));
+                        if (idx !== -1) return idx;
+                    }
+                    return -1;
+                };
+                const colMap = {
+                    userIdx: findIdx(['用户']),
+                    bankIdx: findIdx(['银行']),
+                    nameIdx: findIdx(['存款名称']),
+                    amountIdx: findIdx(['金额(元)', '金额']),
+                    startIdx: findIdx(['存入日期', '起始日期']),
+                    maturityIdx: findIdx(['到期日期']),
+                    rateIdx: findIdx(['利率(%)', '利率']),
+                    intTypeIdx: findIdx(['计息类型']),
+                    notesIdx: findIdx(['备注']),
+                    unlockIdx: findIdx(['解锁状态'])
+                };
                 if (colMap.amountIdx === -1) return reject(new Error('未找到金额列'));
                 const existingUsers = await getUsers();
-                let added = 0; const affectedUsers = new Set();
-                for (let i=1; i<lines.length; i++) {
-                    const fields = parseCSVLine(lines[i]); if (fields.length < 8) continue;
-                    let userName = fields[colMap.userIdx]?.trim(); if (!userName) continue;
+                let added = 0;
+                const affectedUsers = new Set();
+                for (let i = 1; i < lines.length; i++) {
+                    const fields = parseCSVLine(lines[i]);
+                    if (fields.length < 8) continue;
+                    let userName = fields[colMap.userIdx]?.trim();
+                    if (!userName) continue;
                     affectedUsers.add(userName);
-                    if (!existingUsers.includes(userName)) { await addUser(userName); existingUsers.push(userName); }
+                    if (!existingUsers.includes(userName)) {
+                        await addUser(userName);
+                        existingUsers.push(userName);
+                    }
                     const bank = fields[colMap.bankIdx]?.trim() || '';
                     const depositType = fields[colMap.nameIdx]?.trim() || '';
-                    let amountRaw = fields[colMap.amountIdx]?.replace(/,/g, '').trim(); let amount = parseFloat(amountRaw); if (isNaN(amount) || amount <= 0) continue;
-                    let startDate = null; if (colMap.startIdx>=0) { let d = parseDate(fields[colMap.startIdx]?.trim()); if (d) startDate = formatDate(d); }
-                    let maturityDate = null; if (colMap.maturityIdx>=0) { let d = parseDate(fields[colMap.maturityIdx]?.trim()); if (d) maturityDate = formatDate(d); }
-                    let rate = null; if (colMap.rateIdx>=0) { let r = parseFloat(fields[colMap.rateIdx]?.trim()); if (!isNaN(r)) rate = r; }
-                    let interestType = 'simple'; if (colMap.intTypeIdx>=0) { let raw = fields[colMap.intTypeIdx]?.trim().toLowerCase() || ''; interestType = (raw==='compound'||raw==='复利')?'compound':'simple'; }
-                    const notes = colMap.notesIdx>=0 ? (fields[colMap.notesIdx]?.trim()||'') : '';
-                    const isUnlocked = colMap.unlockIdx>=0 && fields[colMap.unlockIdx]?.trim()==='是' ? 1 : 0;
-                    await saveDeposit({ user: userName, bank, depositType, amount, startDate, maturityDate, rate, interestType, notes, is_unlocked: isUnlocked });
+                    let amountRaw = fields[colMap.amountIdx]?.replace(/,/g, '').trim();
+                    let amount = parseFloat(amountRaw);
+                    if (isNaN(amount) || amount <= 0) continue;
+                    let startDate = null;
+                    if (colMap.startIdx >= 0) {
+                        let d = parseDate(fields[colMap.startIdx]?.trim());
+                        if (d) startDate = formatDate(d);
+                    }
+                    let maturityDate = null;
+                    if (colMap.maturityIdx >= 0) {
+                        let d = parseDate(fields[colMap.maturityIdx]?.trim());
+                        if (d) maturityDate = formatDate(d);
+                    }
+                    let rate = null;
+                    if (colMap.rateIdx >= 0) {
+                        let r = parseFloat(fields[colMap.rateIdx]?.trim());
+                        if (!isNaN(r)) rate = r;
+                    }
+                    let interestType = 'simple';
+                    if (colMap.intTypeIdx >= 0) {
+                        let raw = fields[colMap.intTypeIdx]?.trim().toLowerCase() || '';
+                        interestType = (raw === 'compound' || raw === '复利') ? 'compound' : 'simple';
+                    }
+                    const notes = colMap.notesIdx >= 0 ? (fields[colMap.notesIdx]?.trim() || '') : '';
+                    const isUnlocked = colMap.unlockIdx >= 0 && fields[colMap.unlockIdx]?.trim() === '是' ? 1 : 0;
+                    await saveDeposit({
+                        user: userName,
+                        bank,
+                        depositType,
+                        amount,
+                        startDate,
+                        maturityDate,
+                        rate,
+                        interestType,
+                        notes,
+                        is_unlocked: isUnlocked
+                    });
                     added++;
                 }
                 resolve({ added, users: Array.from(affectedUsers) });
@@ -359,25 +739,47 @@
 
     // ---------- JSON 备份/恢复 ----------
     async function backupJSON() {
-        const users = await getUsers(); const allDeposits = await getAllDeposits(); const allRateHistory = [];
-        for (let d of allDeposits) { const rates = await getRateHistory(d.id); allRateHistory.push(...rates); }
-        const exportData = { users, deposits: allDeposits, rate_history: allRateHistory, version: 1 };
+        const users = await getUsers();
+        const allDeposits = await getAllDeposits();
+        const allRateHistory = [];
+        for (let d of allDeposits) {
+            const rates = await getRateHistory(d.id);
+            allRateHistory.push(...rates);
+        }
+        const exportData = {
+            users,
+            deposits: allDeposits,
+            rate_history: allRateHistory,
+            version: 1
+        };
         const json = JSON.stringify(exportData);
-        const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
         const filename = `存款全量备份_${timestamp}.json`;
-        if (window.cordova?.file) await exportWithCordova(json, filename, 'application/json');
-        else fallbackDownload(json, filename, 'application/json');
+        if (window.cordova?.file) {
+            await exportWithCordova(json, filename, 'application/json');
+        } else {
+            fallbackDownload(json, filename, 'application/json');
+        }
     }
+
     async function restoreJSON(file) {
-        const text = await file.text(); const data = JSON.parse(text);
-        const tx = db.transaction(['users','deposits','rate_history'], 'readwrite');
-        const userStore = tx.objectStore('users'), depStore = tx.objectStore('deposits'), rateStore = tx.objectStore('rate_history');
-        await Promise.all([ new Promise(r => { const req=userStore.clear(); req.onsuccess=r; req.onerror=r; }), new Promise(r => { const req=depStore.clear(); req.onsuccess=r; req.onerror=r; }), new Promise(r => { const req=rateStore.clear(); req.onsuccess=r; req.onerror=r; }) ]);
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const tx = db.transaction(['users', 'deposits', 'rate_history'], 'readwrite');
+        const userStore = tx.objectStore('users');
+        const depStore = tx.objectStore('deposits');
+        const rateStore = tx.objectStore('rate_history');
+        await Promise.all([
+            new Promise(r => { const req = userStore.clear(); req.onsuccess = r; req.onerror = r; }),
+            new Promise(r => { const req = depStore.clear(); req.onsuccess = r; req.onerror = r; }),
+            new Promise(r => { const req = rateStore.clear(); req.onsuccess = r; req.onerror = r; })
+        ]);
         for (let u of data.users) userStore.add({ name: u });
         for (let d of data.deposits) depStore.add(d);
-        for (let r of (data.rate_history||[])) rateStore.add(r);
-        await new Promise(resolve => tx.oncomplete = resolve);
-        await refreshData(); alert('✅ JSON 恢复成功！');
+        for (let r of (data.rate_history || [])) rateStore.add(r);
+        await new Promise(resolve => { tx.oncomplete = resolve; });
+        await refreshData();
+        alert('✅ JSON 恢复成功！');
     }
 
     // ---------- 修复重复数据 ----------
@@ -390,136 +792,310 @@
             groups.get(key).push(d);
         }
         const duplicates = Array.from(groups.values()).filter(list => list.length > 1);
-        if (duplicates.length === 0) { alert("✅ 未发现完全重复的记录。"); return; }
+        if (duplicates.length === 0) {
+            alert("✅ 未发现完全重复的记录。");
+            return;
+        }
         let msg = `⚠️ 发现 ${duplicates.length} 组重复记录：\n\n`;
-        for (let group of duplicates) msg += `• ${group[0].bank} ${group[0].depositType} ¥${group[0].amount} — ID: ${group.map(d=>d.id).join(', ')} (${group.length}条)\n`;
-        const choice = confirm(msg + "\n是否保留每组第一条，删除其余重复项？");
+        for (let group of duplicates) {
+            msg += `• ${group[0].bank} ${group[0].depositType} ¥${group[0].amount} — ID: ${group.map(d => d.id).join(', ')} (${group.length}条)\n`;
+        }
+        const choice = confirm(msg + "\n是否保留每组第一条，删除其余重复项？\n点击「确定」执行清理，「取消」仅查看。");
         if (choice) {
             let deleted = 0;
-            for (let group of duplicates) { for (let i=1; i<group.length; i++) { await deleteDeposit(group[i].id); deleted++; } }
+            for (let group of duplicates) {
+                for (let i = 1; i < group.length; i++) {
+                    await deleteDeposit(group[i].id);
+                    deleted++;
+                }
+            }
             alert(`✅ 已删除 ${deleted} 条重复记录。`);
             await refreshData();
         }
     }
 
     // ======================== UI 状态 ========================
-    let currentUser = null, allDeposits = [], duplicateIds = new Set(), currentFilteredDeposits = [], cordovaReady = false;
-    async function refreshData() { allDeposits = await getDeposits(currentUser); allDeposits = await enrichDeposits(allDeposits); applySort(); detectDuplicates(); updateFilterDropdowns(); await updateList(); updateBatchButtons(); }
+    let currentUser = null;
+    let allDeposits = [];
+    let duplicateIds = new Set();
+    let currentFilteredDeposits = [];
+    let cordovaReady = false;
+
+    async function refreshData() {
+        allDeposits = await getDeposits(currentUser);
+        allDeposits = await enrichDeposits(allDeposits);
+        applySort();
+        detectDuplicates();
+        updateFilterDropdowns();
+        await updateList();
+        updateBatchButtons();
+    }
+
     function applySort() {
         const sortVal = document.getElementById('sortSelect')?.value || 'maturityDate-asc';
-        const [field, dir] = sortVal.split('-'); const multiplier = dir === 'desc' ? -1 : 1;
-        allDeposits.sort((a,b) => {
-            let va,vb;
-            switch(field) {
-                case 'maturityDate': va = a.maturityDate||'9999-12-31'; vb = b.maturityDate||'9999-12-31'; break;
-                case 'amount': va = a.amount; vb = b.amount; break;
-                case 'startDate': va = a.startDate||'0000-01-01'; vb = b.startDate||'0000-01-01'; break;
-                case 'rate': va = a.rate??-1; vb = b.rate??-1; break;
-                case 'bank': va = a.bank||''; vb = b.bank||''; return multiplier * va.localeCompare(vb, 'zh-CN');
-                default: va = a.maturityDate||'9999-12-31'; vb = b.maturityDate||'9999-12-31';
+        const [field, dir] = sortVal.split('-');
+        const multiplier = dir === 'desc' ? -1 : 1;
+        allDeposits.sort((a, b) => {
+            let va, vb;
+            switch (field) {
+                case 'maturityDate':
+                    va = a.maturityDate || '9999-12-31';
+                    vb = b.maturityDate || '9999-12-31';
+                    break;
+                case 'amount':
+                    va = a.amount;
+                    vb = b.amount;
+                    break;
+                case 'startDate':
+                    va = a.startDate || '0000-01-01';
+                    vb = b.startDate || '0000-01-01';
+                    break;
+                case 'rate':
+                    va = a.rate ?? -1;
+                    vb = b.rate ?? -1;
+                    break;
+                case 'bank':
+                    va = a.bank || '';
+                    vb = b.bank || '';
+                    return multiplier * va.localeCompare(vb, 'zh-CN');
+                default:
+                    va = a.maturityDate || '9999-12-31';
+                    vb = b.maturityDate || '9999-12-31';
             }
-            if (va < vb) return -1 * multiplier; if (va > vb) return 1 * multiplier; return 0;
+            if (va < vb) return -1 * multiplier;
+            if (va > vb) return 1 * multiplier;
+            return 0;
         });
     }
-    function detectDuplicates() { const keyMap = new Map(); duplicateIds.clear(); for (let d of allDeposits) { const key = `${d.user}|${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}`; if (keyMap.has(key)) { duplicateIds.add(d.id); duplicateIds.add(keyMap.get(key)); } else keyMap.set(key, d.id); } }
-    function updateFilterDropdowns() {
-        const bankFilter = document.getElementById('filterBank'); if (bankFilter) { const banks = [...new Set(allDeposits.map(d => d.bank))].sort((a,b)=>a.localeCompare(b,'zh-CN')); bankFilter.innerHTML = '<option value="">所有银行</option>'+banks.map(b=>`<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join(''); }
-        const typeFilter = document.getElementById('filterType'); if (typeFilter) { const types = [...new Set(allDeposits.map(d => d.depositType))].sort((a,b)=>a.localeCompare(b,'zh-CN')); typeFilter.innerHTML = '<option value="">所有类型</option>'+types.map(t=>`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join(''); }
-        const holderFilter = document.getElementById('filterHolder'); if (holderFilter) { const holders = [...new Set(allDeposits.map(d => d.user))].sort((a,b)=>a.localeCompare(b,'zh-CN')); holderFilter.innerHTML = '<option value="">所有持有人</option>'+holders.map(h=>`<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join(''); }
+
+    function detectDuplicates() {
+        const keyMap = new Map();
+        duplicateIds.clear();
+        for (let d of allDeposits) {
+            const key = `${d.user}|${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}`;
+            if (keyMap.has(key)) {
+                duplicateIds.add(d.id);
+                duplicateIds.add(keyMap.get(key));
+            } else {
+                keyMap.set(key, d.id);
+            }
+        }
     }
+
+    function updateFilterDropdowns() {
+        const bankFilter = document.getElementById('filterBank');
+        if (bankFilter) {
+            const banks = [...new Set(allDeposits.map(d => d.bank))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+            bankFilter.innerHTML = '<option value="">所有银行</option>' + banks.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+        }
+        const typeFilter = document.getElementById('filterType');
+        if (typeFilter) {
+            const types = [...new Set(allDeposits.map(d => d.depositType))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+            typeFilter.innerHTML = '<option value="">所有类型</option>' + types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+        }
+        const holderFilter = document.getElementById('filterHolder');
+        if (holderFilter) {
+            const holders = [...new Set(allDeposits.map(d => d.user))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+            holderFilter.innerHTML = '<option value="">所有持有人</option>' + holders.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
+        }
+    }
+
     async function updateList() {
         let filtered = [...allDeposits];
-        const searchText = document.getElementById('searchInput')?.value.toLowerCase()||'';
-        if (searchText) filtered = filtered.filter(d => d.bank.toLowerCase().includes(searchText)||d.depositType.toLowerCase().includes(searchText)||(d.notes&&d.notes.toLowerCase().includes(searchText)));
-        const fb = document.getElementById('filterBank')?.value; if(fb) filtered = filtered.filter(d => d.bank===fb);
-        const ft = document.getElementById('filterType')?.value; if(ft) filtered = filtered.filter(d => d.depositType===ft);
-        const fh = document.getElementById('filterHolder')?.value; if(fh) filtered = filtered.filter(d => d.user===fh);
-        const minA = parseFloat(document.getElementById('minAmount')?.value); if(!isNaN(minA)) filtered = filtered.filter(d => d.amount>=minA);
-        const maxA = parseFloat(document.getElementById('maxAmount')?.value); if(!isNaN(maxA)) filtered = filtered.filter(d => d.amount<=maxA);
-        const sdF = document.getElementById('startDateFrom')?.value; if(sdF) filtered = filtered.filter(d => d.startDate&&d.startDate>=sdF);
-        const sdT = document.getElementById('startDateTo')?.value; if(sdT) filtered = filtered.filter(d => d.startDate&&d.startDate<=sdT);
-        const mdF = document.getElementById('maturityDateFrom')?.value; if(mdF) filtered = filtered.filter(d => d.maturityDate&&d.maturityDate>=mdF);
-        const mdT = document.getElementById('maturityDateTo')?.value; if(mdT) filtered = filtered.filter(d => d.maturityDate&&d.maturityDate<=mdT);
+        const searchText = document.getElementById('searchInput')?.value.toLowerCase() || '';
+        if (searchText) {
+            filtered = filtered.filter(d =>
+                d.bank.toLowerCase().includes(searchText) ||
+                d.depositType.toLowerCase().includes(searchText) ||
+                (d.notes && d.notes.toLowerCase().includes(searchText))
+            );
+        }
+        const fb = document.getElementById('filterBank')?.value;
+        if (fb) filtered = filtered.filter(d => d.bank === fb);
+        const ft = document.getElementById('filterType')?.value;
+        if (ft) filtered = filtered.filter(d => d.depositType === ft);
+        const fh = document.getElementById('filterHolder')?.value;
+        if (fh) filtered = filtered.filter(d => d.user === fh);
+        const minA = parseFloat(document.getElementById('minAmount')?.value);
+        if (!isNaN(minA)) filtered = filtered.filter(d => d.amount >= minA);
+        const maxA = parseFloat(document.getElementById('maxAmount')?.value);
+        if (!isNaN(maxA)) filtered = filtered.filter(d => d.amount <= maxA);
+        const sdF = document.getElementById('startDateFrom')?.value;
+        if (sdF) filtered = filtered.filter(d => d.startDate && d.startDate >= sdF);
+        const sdT = document.getElementById('startDateTo')?.value;
+        if (sdT) filtered = filtered.filter(d => d.startDate && d.startDate <= sdT);
+        const mdF = document.getElementById('maturityDateFrom')?.value;
+        if (mdF) filtered = filtered.filter(d => d.maturityDate && d.maturityDate >= mdF);
+        const mdT = document.getElementById('maturityDateTo')?.value;
+        if (mdT) filtered = filtered.filter(d => d.maturityDate && d.maturityDate <= mdT);
         currentFilteredDeposits = filtered;
-        const ta = filtered.reduce((s,d)=>s+d.amount,0), tc = filtered.reduce((s,d)=>s+(d.currentInterest||0),0), tm = filtered.reduce((s,d)=>s+(d.totalInterest||0),0);
-        document.getElementById('statsText').innerHTML = `📋 <b>${filtered.length}</b> 条 | 本金: <b>¥${ta.toFixed(2)}</b> | 当前利息: <b>¥${tc.toFixed(2)}</b> | 到期利息: <b>¥${tm.toFixed(2)}</b>`;
-        document.getElementById('scPrincipal').textContent = `¥${ta.toFixed(0)}`; document.getElementById('scCurrInterest').textContent = `¥${tc.toFixed(0)}`; document.getElementById('scMatInterest').textContent = `¥${tm.toFixed(0)}`; document.getElementById('scCount').textContent = filtered.length;
-        renderDepositList(filtered); updateSelectedStats();
+        const totalAmount = filtered.reduce((s, d) => s + d.amount, 0);
+        const totalCurr = filtered.reduce((s, d) => s + (d.currentInterest || 0), 0);
+        const totalMat = filtered.reduce((s, d) => s + (d.totalInterest || 0), 0);
+        document.getElementById('statsText').innerHTML = `📋 <b>${filtered.length}</b> 条 | 本金: <b>¥${totalAmount.toFixed(2)}</b> | 当前利息: <b>¥${totalCurr.toFixed(2)}</b> | 到期利息: <b>¥${totalMat.toFixed(2)}</b>`;
+        document.getElementById('scPrincipal').textContent = `¥${totalAmount.toFixed(0)}`;
+        document.getElementById('scCurrInterest').textContent = `¥${totalCurr.toFixed(0)}`;
+        document.getElementById('scMatInterest').textContent = `¥${totalMat.toFixed(0)}`;
+        document.getElementById('scCount').textContent = filtered.length;
+        renderDepositList(filtered);
+        updateSelectedStats();
     }
+
     function renderDepositList(filtered) {
         const container = document.getElementById('depositListContainer');
-        if (!filtered.length) { container.innerHTML = `<div class="card empty-state"><div style="font-size:3rem;">🏦</div><p><b>暂无存款记录</b></p><p style="color:#9ca3af;">点击上方「➕ 新增存款」开始记录</p></div>`; return; }
+        if (!filtered.length) {
+            container.innerHTML = `<div class="card empty-state"><div style="font-size:3rem;">🏦</div><p><b>暂无存款记录</b></p><p style="color:#9ca3af;">点击上方「➕ 新增存款」开始记录</p></div>`;
+            return;
+        }
         container.innerHTML = filtered.map(dep => {
-            const status = getMaturityStatus(dep); let statusClass='', countdownHTML='';
-            if (status==='expired') { statusClass='expired'; countdownHTML='<span class="countdown-badge overdue">⚠️ 已到期</span>'; }
-            else if (status==='urgent') { statusClass='soon'; const days = Math.ceil((dep._matDate - todayStart())/(1000*3600*24)); countdownHTML=`<span class="countdown-badge urgent">⏰ ${days}天内到期</span>`; }
-            else if (status==='soon') { statusClass='soon'; const days = Math.ceil((dep._matDate - todayStart())/(1000*3600*24)); countdownHTML=`<span class="countdown-badge normal">📅 ${days}天后到期</span>`; }
-            else if (status==='safe' && dep._matDate) { statusClass='safe'; const days = Math.ceil((dep._matDate - todayStart())/(1000*3600*24)); countdownHTML=`<span class="countdown-badge far">✅ ${days}天后到期</span>`; }
+            const status = getMaturityStatus(dep);
+            let statusClass = '';
+            let countdownHTML = '';
+            if (status === 'expired') {
+                statusClass = 'expired';
+                countdownHTML = '<span class="countdown-badge overdue">⚠️ 已到期</span>';
+            } else if (status === 'urgent') {
+                statusClass = 'soon';
+                const days = Math.ceil((dep._matDate - todayStart()) / (1000 * 3600 * 24));
+                countdownHTML = `<span class="countdown-badge urgent">⏰ ${days}天内到期</span>`;
+            } else if (status === 'soon') {
+                statusClass = 'soon';
+                const days = Math.ceil((dep._matDate - todayStart()) / (1000 * 3600 * 24));
+                countdownHTML = `<span class="countdown-badge normal">📅 ${days}天后到期</span>`;
+            } else if (status === 'safe' && dep._matDate) {
+                statusClass = 'safe';
+                const days = Math.ceil((dep._matDate - todayStart()) / (1000 * 3600 * 24));
+                countdownHTML = `<span class="countdown-badge far">✅ ${days}天后到期</span>`;
+            }
             if (duplicateIds.has(dep.id) && !statusClass) statusClass = 'duplicate';
             const dupeClass = duplicateIds.has(dep.id) ? ' duplicate' : '';
-            const showUnlock = !dep.is_unlocked && dep.maturityDate && status==='urgent';
+            const showUnlock = !dep.is_unlocked && dep.maturityDate && status === 'urgent';
             return `<div class="deposit-item${dupeClass} ${statusClass}" data-id="${dep.id}">
                 <div class="deposit-checkbox"><input type="checkbox" class="deposit-check" value="${dep.id}"></div>
                 <div class="deposit-info">
                     <div><strong class="bank-name">${escapeHtml(dep.bank)}</strong><span class="deposit-type-tag">${escapeHtml(dep.depositType)}</span></div>
                     <div class="amount-display">¥${dep.amount.toFixed(2)}</div>
                     <div class="interest-row">📈 当前利息: ¥${dep.currentInterest.toFixed(2)} &nbsp;|&nbsp; 📅 到期利息: ¥${dep.totalInterest.toFixed(2)}</div>
-                    <div class="date-row">📅 起: ${dep.startDate||'-'} &nbsp;→&nbsp; 📆 到: ${dep.maturityDate||'长期'}</div>
-                    <div style="font-size:0.78rem;color:#64748b;">🏷️ 利率: ${dep.rate ?? '-'}% (${dep.interestType==='compound'?'复利':'单利'}) &nbsp;👤 ${escapeHtml(dep.user)}</div>
+                    <div class="date-row">📅 起: ${dep.startDate || '-'} &nbsp;→&nbsp; 📆 到: ${dep.maturityDate || '长期'}</div>
+                    <div style="font-size:0.78rem;color:#64748b;">🏷️ 利率: ${dep.rate ?? '-'}% (${dep.interestType === 'compound' ? '复利' : '单利'}) &nbsp;👤 ${escapeHtml(dep.user)}</div>
                     ${countdownHTML}
-                    ${dep.notes?`<div class="deposit-notes">📝 ${escapeHtml(dep.notes)}</div>`:''}
+                    ${dep.notes ? `<div class="deposit-notes">📝 ${escapeHtml(dep.notes)}</div>` : ''}
                 </div>
                 <div class="deposit-actions">
                     <button class="small ghost editDepositBtn" data-id="${dep.id}">✏️ 编辑</button>
                     <button class="small danger deleteDepositBtn" data-id="${dep.id}">🗑️</button>
-                    ${showUnlock?`<button class="small warning unlockDepositBtn" data-id="${dep.id}">🔓 解锁</button>`:''}
+                    ${showUnlock ? `<button class="small warning unlockDepositBtn" data-id="${dep.id}">🔓 解锁</button>` : ''}
                 </div></div>`;
         }).join('');
-        bindDepositItemEvents(); bindBatchEvents();
+        bindDepositItemEvents();
+        bindBatchEvents();
     }
+
     function bindDepositItemEvents() {
-        document.querySelectorAll('.editDepositBtn').forEach(btn => btn.addEventListener('click', () => { const id=parseInt(btn.dataset.id); const dep=allDeposits.find(d=>d.id===id); if(dep) showDepositModal(dep); }));
-        document.querySelectorAll('.deleteDepositBtn').forEach(btn => btn.addEventListener('click', async () => { const id=parseInt(btn.dataset.id); if(confirm('确定删除这笔存款吗？')) { await deleteDeposit(id); await refreshData(); showToast('🗑️ 已删除'); } }));
-        document.querySelectorAll('.unlockDepositBtn').forEach(btn => btn.addEventListener('click', async () => { await unlockDeposit(parseInt(btn.dataset.id)); await refreshData(); showToast('🔓 已解锁'); }));
+        document.querySelectorAll('.editDepositBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = parseInt(btn.dataset.id);
+                const dep = allDeposits.find(d => d.id === id);
+                if (dep) showDepositModal(dep);
+            });
+        });
+        document.querySelectorAll('.deleteDepositBtn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = parseInt(btn.dataset.id);
+                if (confirm('确定删除这笔存款吗？')) {
+                    await deleteDeposit(id);
+                    await refreshData();
+                    showToast('🗑️ 已删除');
+                }
+            });
+        });
+        document.querySelectorAll('.unlockDepositBtn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await unlockDeposit(parseInt(btn.dataset.id));
+                await refreshData();
+                showToast('🔓 已解锁');
+            });
+        });
     }
+
     function bindBatchEvents() {
-        const selectAll = document.getElementById('selectAllCheckbox'); if(selectAll) { const newEl = selectAll.cloneNode(true); selectAll.parentNode.replaceChild(newEl, selectAll); newEl.addEventListener('change', e => { document.querySelectorAll('.deposit-check').forEach(cb=>cb.checked=e.target.checked); updateSelectedStats(); }); }
-        const batchDelete = document.getElementById('batchDeleteBtn'); if(batchDelete) { const newEl = batchDelete.cloneNode(true); batchDelete.parentNode.replaceChild(newEl, batchDelete); newEl.addEventListener('click', async () => { const checked = document.querySelectorAll('.deposit-check:checked'); if(!checked.length) return alert('请勾选存款记录'); const ids = Array.from(checked).map(cb=>parseInt(cb.value)); if(confirm(`确定删除选中的 ${ids.length} 条记录吗？`)) { await deleteDeposits(ids); await refreshData(); showToast(`🗑️ 已删除 ${ids.length} 条`); } }); }
-        document.querySelectorAll('.deposit-check').forEach(cb => cb.addEventListener('change', updateSelectedStats));
+        const selectAll = document.getElementById('selectAllCheckbox');
+        if (selectAll) {
+            const newEl = selectAll.cloneNode(true);
+            selectAll.parentNode.replaceChild(newEl, selectAll);
+            newEl.addEventListener('change', e => {
+                document.querySelectorAll('.deposit-check').forEach(cb => cb.checked = e.target.checked);
+                updateSelectedStats();
+            });
+        }
+        const batchDelete = document.getElementById('batchDeleteBtn');
+        if (batchDelete) {
+            const newEl = batchDelete.cloneNode(true);
+            batchDelete.parentNode.replaceChild(newEl, batchDelete);
+            newEl.addEventListener('click', async () => {
+                const checked = document.querySelectorAll('.deposit-check:checked');
+                if (!checked.length) return alert('请勾选存款记录');
+                const ids = Array.from(checked).map(cb => parseInt(cb.value));
+                if (confirm(`确定删除选中的 ${ids.length} 条记录吗？`)) {
+                    await deleteDeposits(ids);
+                    await refreshData();
+                    showToast(`🗑️ 已删除 ${ids.length} 条`);
+                }
+            });
+        }
+        document.querySelectorAll('.deposit-check').forEach(cb => {
+            cb.addEventListener('change', updateSelectedStats);
+        });
     }
+
     function updateSelectedStats() {
         const checked = document.querySelectorAll('.deposit-check:checked');
-        const selectedIds = Array.from(checked).map(cb=>parseInt(cb.value));
-        const selected = allDeposits.filter(d=>selectedIds.includes(d.id));
-        const ta = selected.reduce((s,d)=>s+d.amount,0), tc = selected.reduce((s,d)=>s+(d.currentInterest||0),0);
+        const selectedIds = Array.from(checked).map(cb => parseInt(cb.value));
+        const selected = allDeposits.filter(d => selectedIds.includes(d.id));
+        const totalAmount = selected.reduce((s, d) => s + d.amount, 0);
+        const totalCurr = selected.reduce((s, d) => s + (d.currentInterest || 0), 0);
         const span = document.getElementById('selectedStats');
-        if(span && selected.length) span.innerHTML = `<span class="status-badge success">✅ 已选 ${selected.length} 条: ¥${ta.toFixed(2)} | 利息 ¥${tc.toFixed(2)}</span>`;
-        else if(span) span.innerHTML = '';
+        if (span && selected.length) {
+            span.innerHTML = `<span class="status-badge success">✅ 已选 ${selected.length} 条: ¥${totalAmount.toFixed(2)} | 利息 ¥${totalCurr.toFixed(2)}</span>`;
+        } else if (span) {
+            span.innerHTML = '';
+        }
     }
-    function updateBatchButtons() { const hasAny = allDeposits.length>0; document.getElementById('selectAllCheckbox').disabled = !hasAny; document.getElementById('batchDeleteBtn').disabled = !hasAny; }
+
+    function updateBatchButtons() {
+        const hasAny = allDeposits.length > 0;
+        document.getElementById('selectAllCheckbox').disabled = !hasAny;
+        document.getElementById('batchDeleteBtn').disabled = !hasAny;
+    }
 
     async function refreshUserSelector() {
-        const users = await getUsers(); const select = document.getElementById('userSelect'); if(!select) return;
-        select.innerHTML = `<option value="__all__" ${currentUser===null?'selected':''}>📊 所有用户合计</option>` + users.map(u=>`<option value="${escapeHtml(u)}" ${u===currentUser?'selected':''}>${escapeHtml(u)}</option>`).join('');
+        const users = await getUsers();
+        const select = document.getElementById('userSelect');
+        if (!select) return;
+        select.innerHTML = `<option value="__all__" ${currentUser === null ? 'selected' : ''}>📊 所有用户合计</option>` +
+            users.map(u => `<option value="${escapeHtml(u)}" ${u === currentUser ? 'selected' : ''}>${escapeHtml(u)}</option>`).join('');
     }
 
     // ========== 模态框：存款编辑（增强存期） ==========
     function parseTermValue(termVal) {
         if (termVal === '0' || termVal === 'custom') return null;
-        const match = termVal.match(/^(\d+)([dmy])$/); if (!match) return null;
+        const match = termVal.match(/^(\d+)([dmy])$/);
+        if (!match) return null;
         return { num: parseInt(match[1]), unit: match[2] };
     }
+
     async function showDepositModal(deposit = null) {
         const users = await getUsers();
-        const modalDiv = document.createElement('div'); modalDiv.className = 'modal';
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal';
         modalDiv.innerHTML = `
         <div class="modal-content">
-          <h3>${deposit?'✏️ 编辑存款':'➕ 新增存款'}</h3>
-          <label>👤 持有人</label><select id="modalUser">${users.map(u=>`<option value="${escapeHtml(u)}" ${deposit?.user===u?'selected':''}>${escapeHtml(u)}</option>`).join('')}</select>
-          <label>🏦 银行</label><input list="bankList" id="modalBank" value="${escapeHtml(deposit?.bank||'')}" placeholder="选择或输入银行"><datalist id="bankList">${PRESET_BANKS.map(b=>`<option value="${escapeHtml(b)}">`).join('')}</datalist>
-          <label>📂 存款类型</label><input list="typeList" id="modalType" value="${escapeHtml(deposit?.depositType||'')}" placeholder="选择或输入类型"><datalist id="typeList">${PRESET_DEPOSIT_TYPES.map(t=>`<option value="${escapeHtml(t)}">`).join('')}</datalist>
-          <label>💰 金额 (元)</label><input id="modalAmount" type="number" step="0.01" min="0.01" value="${deposit?.amount||''}">
-          <label>📅 起始日期</label><input type="date" id="modalStart" value="${deposit?.startDate||''}">
+          <h3>${deposit ? '✏️ 编辑存款' : '➕ 新增存款'}</h3>
+          <label>👤 持有人</label><select id="modalUser">${users.map(u => `<option value="${escapeHtml(u)}" ${deposit?.user === u ? 'selected' : ''}>${escapeHtml(u)}</option>`).join('')}</select>
+          <label>🏦 银行</label><input list="bankList" id="modalBank" value="${escapeHtml(deposit?.bank || '')}" placeholder="选择或输入银行"><datalist id="bankList">${PRESET_BANKS.map(b => `<option value="${escapeHtml(b)}">`).join('')}</datalist>
+          <label>📂 存款类型</label><input list="typeList" id="modalType" value="${escapeHtml(deposit?.depositType || '')}" placeholder="选择或输入类型"><datalist id="typeList">${PRESET_DEPOSIT_TYPES.map(t => `<option value="${escapeHtml(t)}">`).join('')}</datalist>
+          <label>💰 金额 (元)</label><input id="modalAmount" type="number" step="0.01" min="0.01" value="${deposit?.amount || ''}">
+          <label>📅 起始日期</label><input type="date" id="modalStart" value="${deposit?.startDate || ''}">
           <div style="display:flex;gap:10px;align-items:flex-end;">
             <div style="flex:1;"><label>📆 存期</label>
               <select id="modalTermYear">
@@ -531,7 +1107,7 @@
                 <option value="custom">自定义期限</option>
               </select>
             </div>
-            <div style="flex:2;"><label>📆 到期日期</label><input type="date" id="modalMaturity" value="${deposit?.maturityDate||''}"></div>
+            <div style="flex:2;"><label>📆 到期日期</label><input type="date" id="modalMaturity" value="${deposit?.maturityDate || ''}"></div>
           </div>
           <div id="customTermGroup" style="display:none; margin-top:6px;">
             <div style="display:flex; gap:8px; align-items:center;">
@@ -540,15 +1116,20 @@
               <button type="button" id="applyCustomTermBtn" class="small">应用</button>
             </div>
           </div>
-          <label>📊 年利率 (%)</label><input id="modalRate" type="number" step="0.01" min="0" value="${deposit?.rate??''}">
-          <label>🔄 计息类型</label><select id="modalInterestType"><option value="simple" ${deposit?.interestType==='simple'?'selected':''}>单利</option><option value="compound" ${deposit?.interestType==='compound'?'selected':''}>复利</option></select>
-          <label>📝 备注</label><textarea id="modalNotes" rows="2">${deposit?.notes||''}</textarea>
-          ${deposit?`<button id="rateHistoryBtn" class="small ghost" style="margin-top:8px;width:100%;">📜 管理利率历史</button>`:''}
+          <label>📊 年利率 (%)</label><input id="modalRate" type="number" step="0.01" min="0" value="${deposit?.rate ?? ''}">
+          <label>🔄 计息类型</label><select id="modalInterestType"><option value="simple" ${deposit?.interestType === 'simple' ? 'selected' : ''}>单利</option><option value="compound" ${deposit?.interestType === 'compound' ? 'selected' : ''}>复利</option></select>
+          <label>📝 备注</label><textarea id="modalNotes" rows="2">${deposit?.notes || ''}</textarea>
+          ${deposit ? `<button id="rateHistoryBtn" class="small ghost" style="margin-top:8px;width:100%;">📜 管理利率历史</button>` : ''}
           <div class="grid-2" style="margin-top:16px;"><button id="modalSave" class="success">💾 保存</button><button id="modalCancel" class="secondary">取消</button></div>
         </div>`;
         document.body.appendChild(modalDiv);
         const closeModal = () => modalDiv.remove();
-        if (deposit) modalDiv.querySelector('#rateHistoryBtn').onclick = () => { closeModal(); showRateHistoryModal(deposit.id); };
+        if (deposit) {
+            modalDiv.querySelector('#rateHistoryBtn').onclick = () => {
+                closeModal();
+                showRateHistoryModal(deposit.id);
+            };
+        }
 
         const startInput = modalDiv.querySelector('#modalStart');
         const termSelect = modalDiv.querySelector('#modalTermYear');
@@ -559,38 +1140,60 @@
         const applyCustomBtn = modalDiv.querySelector('#applyCustomTermBtn');
 
         function setMaturityFromTerm(termStr) {
-            const startVal = startInput.value; if (!startVal || termStr==='0') return;
-            const startDate = new Date(startVal); if (isNaN(startDate.getTime())) return;
+            const startVal = startInput.value;
+            if (!startVal || termStr === '0') return;
+            const startDate = new Date(startVal);
+            if (isNaN(startDate.getTime())) return;
             let newDate = new Date(startDate);
             if (termStr === 'custom') return;
-            const parsed = parseTermValue(termStr); if (!parsed) return;
-            const {num, unit} = parsed;
-            if (unit === 'd') newDate.setDate(newDate.getDate()+num);
-            else if (unit === 'm') newDate.setMonth(newDate.getMonth()+num);
-            else if (unit === 'y') newDate.setFullYear(newDate.getFullYear()+num);
+            const parsed = parseTermValue(termStr);
+            if (!parsed) return;
+            const { num, unit } = parsed;
+            if (unit === 'd') newDate.setDate(newDate.getDate() + num);
+            else if (unit === 'm') newDate.setMonth(newDate.getMonth() + num);
+            else if (unit === 'y') newDate.setFullYear(newDate.getFullYear() + num);
             maturityInput.value = formatDate(newDate);
         }
 
         termSelect.addEventListener('change', () => {
             const val = termSelect.value;
-            if (val === 'custom') { customGroup.style.display = 'block'; maturityInput.value = ''; }
-            else { customGroup.style.display = 'none'; setMaturityFromTerm(val); }
+            if (val === 'custom') {
+                customGroup.style.display = 'block';
+                maturityInput.value = '';
+            } else {
+                customGroup.style.display = 'none';
+                setMaturityFromTerm(val);
+            }
         });
-        startInput.addEventListener('change', () => { if (termSelect.value !== 'custom') setMaturityFromTerm(termSelect.value); });
+        startInput.addEventListener('change', () => {
+            if (termSelect.value !== 'custom') setMaturityFromTerm(termSelect.value);
+        });
         applyCustomBtn.addEventListener('click', () => {
-            const valNum = parseInt(customValue.value); if (!valNum || valNum<1) { alert('请输入有效数值'); return; }
-            const unit = customUnit.value; const termCode = `${valNum}${unit}`;
+            const valNum = parseInt(customValue.value);
+            if (!valNum || valNum < 1) {
+                alert('请输入有效数值');
+                return;
+            }
+            const unit = customUnit.value;
+            const termCode = `${valNum}${unit}`;
             setMaturityFromTerm(termCode);
         });
 
         if (deposit) {
             if (deposit.startDate && deposit.maturityDate) {
-                const start = new Date(deposit.startDate); const end = new Date(deposit.maturityDate);
+                const start = new Date(deposit.startDate);
+                const end = new Date(deposit.maturityDate);
                 if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-                    const diffDays = Math.round((end-start)/(1000*3600*24));
-                    const presets = [{v:'1d',d:1},{v:'7d',d:7},{v:'14d',d:14},{v:'1m',d:30},{v:'3m',d:91},{v:'6m',d:182},{v:'9m',d:273},{v:'1y',d:365},{v:'2y',d:730},{v:'3y',d:1095},{v:'5y',d:1825}];
+                    const diffDays = Math.round((end - start) / (1000 * 3600 * 24));
+                    const presets = [{ v: '1d', d: 1 }, { v: '7d', d: 7 }, { v: '14d', d: 14 }, { v: '1m', d: 30 }, { v: '3m', d: 91 }, { v: '6m', d: 182 }, { v: '9m', d: 273 }, { v: '1y', d: 365 }, { v: '2y', d: 730 }, { v: '3y', d: 1095 }, { v: '5y', d: 1825 }];
                     let matched = false;
-                    for (let p of presets) { if (Math.abs(diffDays - p.d) <= 3) { termSelect.value = p.v; matched = true; break; } }
+                    for (let p of presets) {
+                        if (Math.abs(diffDays - p.d) <= 3) {
+                            termSelect.value = p.v;
+                            matched = true;
+                            break;
+                        }
+                    }
                     if (!matched) termSelect.value = 'custom';
                 }
             }
@@ -599,8 +1202,11 @@
 
         let saving = false;
         modalDiv.querySelector('#modalSave').onclick = async () => {
-            if (saving) return; saving = true;
-            const saveBtn = modalDiv.querySelector('#modalSave'); saveBtn.disabled = true; saveBtn.textContent = '保存中...';
+            if (saving) return;
+            saving = true;
+            const saveBtn = modalDiv.querySelector('#modalSave');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '保存中...';
             try {
                 const newDeposit = {
                     user: modalDiv.querySelector('#modalUser').value,
@@ -614,28 +1220,45 @@
                     notes: modalDiv.querySelector('#modalNotes').value.trim(),
                     is_unlocked: deposit?.is_unlocked || 0
                 };
-                if (!newDeposit.bank || !newDeposit.depositType || isNaN(newDeposit.amount) || newDeposit.amount<=0) throw new Error('请填写银行、类型、有效金额');
-                if (deposit) { newDeposit.id = deposit.id; await saveDeposit(newDeposit); showToast('✅ 存款已更新'); }
-                else { await saveDeposit(newDeposit); showToast('✅ 存款已添加'); }
-                closeModal(); await refreshData();
-            } catch (err) { alert('保存失败：'+err.message); } finally { saving = false; }
+                if (!newDeposit.bank || !newDeposit.depositType || isNaN(newDeposit.amount) || newDeposit.amount <= 0) {
+                    throw new Error('请填写银行、类型、有效金额');
+                }
+                if (deposit) {
+                    newDeposit.id = deposit.id;
+                    await saveDeposit(newDeposit);
+                    showToast('✅ 存款已更新');
+                } else {
+                    await saveDeposit(newDeposit);
+                    showToast('✅ 存款已添加');
+                }
+                closeModal();
+                await refreshData();
+            } catch (err) {
+                alert('保存失败：' + err.message);
+            } finally {
+                saving = false;
+            }
         };
         modalDiv.querySelector('#modalCancel').onclick = closeModal;
-        modalDiv.addEventListener('click', e => { if (e.target === modalDiv) closeModal(); });
+        modalDiv.addEventListener('click', e => {
+            if (e.target === modalDiv) closeModal();
+        });
     }
 
     // ========== 利率历史模态框 ==========
     async function showRateHistoryModal(depositId) {
-        const deposit = allDeposits.find(d => d.id === depositId); if (!deposit) return;
+        const deposit = allDeposits.find(d => d.id === depositId);
+        if (!deposit) return;
         const history = await getRateHistory(depositId);
-        const modalDiv = document.createElement('div'); modalDiv.className = 'modal';
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal';
         modalDiv.innerHTML = `
         <div class="modal-content">
           <h3>📜 利率历史</h3>
           <p style="text-align:center;color:#64748b;">${escapeHtml(deposit.bank)} · ${escapeHtml(deposit.depositType)}</p>
           <div style="max-height:200px;overflow-y:auto;">
             ${history.map(h => `<div style="display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #eee;"><span>📅 ${h.effective_date} → <b>${h.interest_rate}%</b></span><button class="small danger del-rate-btn" data-id="${h.id}">🗑️</button></div>`).join('')}
-            ${history.length===0?'<div style="text-align:center;color:#9ca3af;padding:20px;">暂无利率变更记录</div>':''}
+            ${history.length === 0 ? '<div style="text-align:center;color:#9ca3af;padding:20px;">暂无利率变更记录</div>' : ''}
           </div>
           <div style="display:flex;gap:8px;margin-top:12px;">
             <input type="date" id="newRateDate" placeholder="生效日期"><input type="number" id="newRateValue" step="0.01" placeholder="利率%">
@@ -645,229 +1268,671 @@
         </div>`;
         document.body.appendChild(modalDiv);
         const closeModal = () => modalDiv.remove();
-        modalDiv.querySelectorAll('.del-rate-btn').forEach(btn => btn.onclick = async () => { await deleteRateChange(parseInt(btn.dataset.id)); closeModal(); await showRateHistoryModal(depositId); await refreshData(); });
+        modalDiv.querySelectorAll('.del-rate-btn').forEach(btn => {
+            btn.onclick = async () => {
+                await deleteRateChange(parseInt(btn.dataset.id));
+                closeModal();
+                await showRateHistoryModal(depositId);
+                await refreshData();
+            };
+        });
         modalDiv.querySelector('#addRateBtn').onclick = async () => {
             const date = modalDiv.querySelector('#newRateDate').value;
             const rate = parseFloat(modalDiv.querySelector('#newRateValue').value);
-            if (!date || isNaN(rate)) { alert('请填写完整日期和利率'); return; }
+            if (!date || isNaN(rate)) {
+                alert('请填写完整日期和利率');
+                return;
+            }
             const ok = await addRateChange(depositId, date, rate);
-            if (ok) { closeModal(); await showRateHistoryModal(depositId); await refreshData(); } else alert('该日期已有利率记录');
+            if (ok) {
+                closeModal();
+                await showRateHistoryModal(depositId);
+                await refreshData();
+            } else {
+                alert('该日期已有利率记录');
+            }
         };
         modalDiv.querySelector('#closeRateModal').onclick = closeModal;
-        modalDiv.addEventListener('click', e => { if (e.target === modalDiv) closeModal(); });
+        modalDiv.addEventListener('click', e => {
+            if (e.target === modalDiv) closeModal();
+        });
     }
 
     // ========== 用户管理模态框 ==========
     async function showManageUsersModal() {
         const users = await getUsers();
-        const modalDiv = document.createElement('div'); modalDiv.className = 'modal';
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal';
         modalDiv.innerHTML = `
         <div class="modal-content">
           <h3>👥 用户管理</h3>
           <div style="max-height:350px;overflow-y:auto;">
             ${users.map(u => `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #eee;"><span style="font-weight:600;">${escapeHtml(u)}</span><div style="display:flex;gap:6px;"><button class="small ghost rename-user-btn" data-user="${escapeHtml(u)}">✏️ 重命名</button><button class="small danger delete-user-btn" data-user="${escapeHtml(u)}">🗑️</button></div></div>`).join('')}
-            ${users.length===0?'<div style="text-align:center;color:#9ca3af;padding:20px;">暂无用户</div>':''}
+            ${users.length === 0 ? '<div style="text-align:center;color:#9ca3af;padding:20px;">暂无用户</div>' : ''}
           </div>
           <button id="closeManageModal" class="secondary small" style="width:100%;margin-top:12px;">关闭</button>
         </div>`;
         document.body.appendChild(modalDiv);
         const closeModal = () => modalDiv.remove();
-        modalDiv.querySelectorAll('.rename-user-btn').forEach(btn => btn.addEventListener('click', async () => {
-            const oldName = btn.dataset.user; const newName = prompt('新用户名', oldName);
-            if (newName && newName !== oldName) { const ok = await renameUser(oldName, newName); if (ok) { if (currentUser === oldName) currentUser = newName; await refreshUserSelector(); await refreshData(); closeModal(); await showManageUsersModal(); } else alert('重命名失败，可能新用户名已存在'); }
-        }));
-        modalDiv.querySelectorAll('.delete-user-btn').forEach(btn => btn.addEventListener('click', async () => {
-            const userName = btn.dataset.user; if (!confirm(`确定删除用户「${userName}」吗？该用户下的存款也将被删除！`)) return;
-            const deposits = await getDeposits(userName); for (let d of deposits) await deleteDeposit(d.id);
-            const success = await deleteUser(userName);
-            if (success) { if (currentUser === userName) { const newUsers = await getUsers(); currentUser = newUsers[0] || null; } await refreshUserSelector(); await refreshData(); closeModal(); await showManageUsersModal(); showToast(`✅ 用户「${userName}」已删除`); } else alert(`无法删除用户「${userName}」`);
-        }));
+        modalDiv.querySelectorAll('.rename-user-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const oldName = btn.dataset.user;
+                const newName = prompt('新用户名', oldName);
+                if (newName && newName !== oldName) {
+                    const ok = await renameUser(oldName, newName);
+                    if (ok) {
+                        if (currentUser === oldName) currentUser = newName;
+                        await refreshUserSelector();
+                        await refreshData();
+                        closeModal();
+                        await showManageUsersModal();
+                    } else {
+                        alert('重命名失败，可能新用户名已存在');
+                    }
+                }
+            });
+        });
+        modalDiv.querySelectorAll('.delete-user-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const userName = btn.dataset.user;
+                if (!confirm(`确定删除用户「${userName}」吗？该用户下的存款也将被删除！`)) return;
+                const deposits = await getDeposits(userName);
+                for (let d of deposits) await deleteDeposit(d.id);
+                const success = await deleteUser(userName);
+                if (success) {
+                    if (currentUser === userName) {
+                        const newUsers = await getUsers();
+                        currentUser = newUsers[0] || null;
+                    }
+                    await refreshUserSelector();
+                    await refreshData();
+                    closeModal();
+                    await showManageUsersModal();
+                    showToast(`✅ 用户「${userName}」已删除`);
+                } else {
+                    alert(`无法删除用户「${userName}」`);
+                }
+            });
+        });
         modalDiv.querySelector('#closeManageModal').onclick = closeModal;
-        modalDiv.addEventListener('click', e => { if (e.target === modalDiv) closeModal(); });
+        modalDiv.addEventListener('click', e => {
+            if (e.target === modalDiv) closeModal();
+        });
     }
 
     // ========== 统计图表 ==========
     function enableDoubleClickZoom(chartInstance) {
         chartInstance.getDom().ondblclick = () => {
-            const modalBig = document.createElement('div'); modalBig.className = 'modal'; modalBig.style.zIndex = '3000';
-            const container = document.createElement('div'); container.style.cssText = 'width:92vw;height:80vh;background:white;border-radius:20px;padding:16px;display:flex;flex-direction:column;';
-            const chartDom = document.createElement('div'); chartDom.style.cssText = 'width:100%;height:calc(100% - 50px);';
+            const modalBig = document.createElement('div');
+            modalBig.className = 'modal';
+            modalBig.style.zIndex = '3000';
+            const container = document.createElement('div');
+            container.style.cssText = 'width:92vw;height:80vh;background:white;border-radius:20px;padding:16px;display:flex;flex-direction:column;';
+            const chartDom = document.createElement('div');
+            chartDom.style.cssText = 'width:100%;height:calc(100% - 50px);';
             container.appendChild(chartDom);
-            const closeBtn = document.createElement('button'); closeBtn.innerText = '关闭'; closeBtn.className = 'small secondary'; closeBtn.style.cssText = 'margin-top:12px;align-self:center;';
-            closeBtn.onclick = () => { newChart.dispose(); modalBig.remove(); };
-            container.appendChild(closeBtn); modalBig.appendChild(container); document.body.appendChild(modalBig);
-            const newChart = echarts.init(chartDom); newChart.setOption(chartInstance.getOption());
+            const closeBtn = document.createElement('button');
+            closeBtn.innerText = '关闭';
+            closeBtn.className = 'small secondary';
+            closeBtn.style.cssText = 'margin-top:12px;align-self:center;';
+            closeBtn.onclick = () => {
+                newChart.dispose();
+                modalBig.remove();
+            };
+            container.appendChild(closeBtn);
+            modalBig.appendChild(container);
+            document.body.appendChild(modalBig);
+            const newChart = echarts.init(chartDom);
+            newChart.setOption(chartInstance.getOption());
             window.addEventListener('resize', () => newChart.resize());
-            modalBig.addEventListener('click', e => { if (e.target === modalBig) { newChart.dispose(); modalBig.remove(); } });
+            modalBig.addEventListener('click', e => {
+                if (e.target === modalBig) {
+                    newChart.dispose();
+                    modalBig.remove();
+                }
+            });
         };
     }
+
+    // ---------- 生成报表HTML（用于PDF导出，含图表容器） ----------
+    function generateReportHTML(data) {
+        const totalAmount = data.reduce((s, d) => s + d.amount, 0);
+        const totalCurr = data.reduce((s, d) => s + (d.currentInterest || 0), 0);
+        const totalMat = data.reduce((s, d) => s + (d.totalInterest || 0), 0);
+
+        const byBank = {};
+        const byType = {};
+        const byHolder = {};
+        const monthMap = new Map();
+        data.forEach(d => {
+            byBank[d.bank] = (byBank[d.bank] || 0) + d.amount;
+            byType[d.depositType] = (byType[d.depositType] || 0) + d.amount;
+            byHolder[d.user] = (byHolder[d.user] || 0) + d.amount;
+            if (d.startDate) {
+                const ym = d.startDate.slice(0,7);
+                const cur = monthMap.get(ym) || { deposit:0, maturity:0 };
+                cur.deposit += d.amount;
+                monthMap.set(ym, cur);
+            }
+            if (d.maturityDate) {
+                const ym = d.maturityDate.slice(0,7);
+                const cur = monthMap.get(ym) || { deposit:0, maturity:0 };
+                cur.maturity += d.amount;
+                monthMap.set(ym, cur);
+            }
+        });
+
+        const months = [...monthMap.keys()].sort();
+        const depositData = months.map(m => monthMap.get(m).deposit);
+        const maturityData = months.map(m => monthMap.get(m).maturity);
+
+        // 构造图表数据JSON，用于在HTML中通过JS渲染
+        const chartData = {
+            byBank: Object.entries(byBank).map(([name, value]) => ({ name, value: Math.round(value*100)/100 })),
+            byType: Object.entries(byType).map(([name, value]) => ({ name, value: Math.round(value*100)/100 })),
+            byHolder: Object.entries(byHolder).map(([name, value]) => ({ name, value: Math.round(value*100)/100 })),
+            months,
+            depositData,
+            maturityData
+        };
+
+        return `
+        <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;">
+            <h2 style="text-align:center;color:#4f6ef7;">💰 存款报表</h2>
+            <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()}</p>
+            <div style="display:flex;justify-content:space-around;margin:15px 0;background:#f0f4f8;border-radius:12px;padding:12px;">
+                <div><b>本金总额</b><br>¥${totalAmount.toFixed(2)}</div>
+                <div><b>当前利息</b><br>¥${totalCurr.toFixed(2)}</div>
+                <div><b>到期利息</b><br>¥${totalMat.toFixed(2)}</div>
+                <div><b>存款笔数</b><br>${data.length}</div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px;">
+                <thead><tr style="background:#4f6ef7;color:white;">
+                    <th>银行</th><th>类型</th><th>持有人</th><th>金额</th><th>起始日</th><th>到期日</th><th>利率%</th><th>计息</th><th>当前利息</th><th>到期利息</th>
+                </tr></thead>
+                <tbody>
+                ${data.map((d, i) => `<tr style="background:${i%2===0?'#f8fafc':'white'};">
+                    <td>${escapeHtml(d.bank)}</td>
+                    <td>${escapeHtml(d.depositType)}</td>
+                    <td>${escapeHtml(d.user)}</td>
+                    <td style="text-align:right;">¥${d.amount.toFixed(2)}</td>
+                    <td>${d.startDate || '-'}</td>
+                    <td>${d.maturityDate || '-'}</td>
+                    <td style="text-align:right;">${d.rate != null ? d.rate.toFixed(2) : '-'}</td>
+                    <td>${d.interestType === 'compound' ? '复利' : '单利'}</td>
+                    <td style="text-align:right;">¥${d.currentInterest.toFixed(2)}</td>
+                    <td style="text-align:right;">¥${d.totalInterest.toFixed(2)}</td>
+                </tr>`).join('')}
+                </tbody>
+            </table>
+            <!-- 图表容器 -->
+            <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;">
+                <div style="width:45%;min-width:300px;height:250px;" id="pdfBankChart"></div>
+                <div style="width:45%;min-width:300px;height:250px;" id="pdfTypeChart"></div>
+                <div style="width:45%;min-width:300px;height:250px;" id="pdfHolderChart"></div>
+                ${months.length ? `<div style="width:90%;min-width:400px;height:300px;" id="pdfTrendChart"></div>` : ''}
+            </div>
+            <script>
+                // 内联图表渲染脚本，将在截图前执行
+                (function() {
+                    const chartData = ${JSON.stringify(chartData)};
+                    if (typeof echarts !== 'undefined') {
+                        const renderChart = (id, data, title) => {
+                            const dom = document.getElementById(id);
+                            if (!dom) return;
+                            const chart = echarts.init(dom);
+                            chart.setOption({
+                                title: { text: title, left: 'center', textStyle: { fontSize: 12 } },
+                                tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+                                series: [{ type: 'pie', radius: ['40%','65%'], data: data }]
+                            });
+                        };
+                        renderChart('pdfBankChart', chartData.byBank, '银行分布');
+                        renderChart('pdfTypeChart', chartData.byType, '类型分布');
+                        renderChart('pdfHolderChart', chartData.byHolder, '持有人分布');
+                        if (chartData.months.length) {
+                            const dom = document.getElementById('pdfTrendChart');
+                            if (dom) {
+                                const chart = echarts.init(dom);
+                                chart.setOption({
+                                    tooltip: { trigger: 'axis' },
+                                    legend: { data: ['存入金额','到期金额'] },
+                                    xAxis: { type: 'category', data: chartData.months, axisLabel: { rotate: 30 } },
+                                    yAxis: { type: 'value', name: '金额(元)' },
+                                    series: [
+                                        { name: '存入金额', type: 'bar', barWidth: '35%', data: chartData.depositData, itemStyle: { color: '#4f6ef7', borderRadius: [4,4,0,0] } },
+                                        { name: '到期金额', type: 'bar', barWidth: '35%', data: chartData.maturityData, itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] } }
+                                    ]
+                                });
+                            }
+                        }
+                    }
+                })();
+            <\/script>
+        </div>
+        `;
+    }
+
+    // ========== 改进的 PDF 导出（支持图表，无截断） ==========
+    async function exportPDF() {
+        if (typeof html2canvas === 'undefined' || typeof echarts === 'undefined') {
+            alert('请确保 html2canvas 和 ECharts 已加载');
+            return;
+        }
+
+        const data = currentFilteredDeposits.length > 0 ? currentFilteredDeposits : allDeposits;
+        if (!data.length) {
+            showToast('⚠️ 无数据可导出');
+            return;
+        }
+
+        const reportHTML = generateReportHTML(data);
+        const container = document.createElement('div');
+        container.style.cssText = 'position:absolute; left:-9999px; width:1100px; background:white; padding:20px;';
+        container.innerHTML = reportHTML;
+        document.body.appendChild(container);
+
+        // 等待图表渲染
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        try {
+            const canvas = await html2canvas(container, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            });
+
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('landscape', 'mm', 'a4');
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 10;
+            const contentWidth = pageWidth - margin * 2;
+            const scale = contentWidth / canvas.width;
+            const contentHeight = canvas.height * scale;
+            const pageContentHeight = pageHeight - margin * 2;
+
+            let remainingHeight = contentHeight;
+            let yOffset = 0;
+            while (remainingHeight > 0) {
+                const currentPageHeight = Math.min(remainingHeight, pageContentHeight);
+                const srcY = (yOffset / scale);
+                const srcHeight = (currentPageHeight / scale);
+
+                const pageCanvas = document.createElement('canvas');
+                pageCanvas.width = canvas.width;
+                pageCanvas.height = srcHeight;
+                const ctx = pageCanvas.getContext('2d');
+                ctx.drawImage(canvas, 0, srcY, canvas.width, srcHeight, 0, 0, canvas.width, srcHeight);
+                const imgData = pageCanvas.toDataURL('image/png');
+
+                if (yOffset === 0) {
+                    pdf.addImage(imgData, 'PNG', margin, margin, contentWidth, currentPageHeight);
+                } else {
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', margin, margin, contentWidth, currentPageHeight);
+                }
+
+                yOffset += currentPageHeight;
+                remainingHeight -= currentPageHeight;
+            }
+
+            const label = currentUser === null ? '合计' : currentUser;
+            const filename = `存款报表_${label}_${new Date().toISOString().slice(0,10)}.pdf`;
+            const pdfBlob = pdf.output('blob');
+
+            if (window.cordova?.file && cordovaReady) {
+                await exportWithCordova(pdfBlob, filename, 'application/pdf');
+                showToast('✅ PDF已保存到 Download/存款管家备份');
+            } else {
+                pdf.save(filename);
+                showToast('📄 PDF已下载');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('❌ PDF生成失败');
+        } finally {
+            document.body.removeChild(container);
+        }
+    }
+
+    // ========== 统计模态框（增加导出PDF按钮） ==========
     async function showStatsModal() {
         const data = currentFilteredDeposits;
-        if (!data.length) { alert('当前筛选条件下无存款数据'); return; }
-        const totalAmount = data.reduce((s,d)=>s+d.amount,0), totalCurr = data.reduce((s,d)=>s+(d.currentInterest||0),0), totalMat = data.reduce((s,d)=>s+(d.totalInterest||0),0);
-        const byHolder={}, byType={}, byBank={};
-        data.forEach(d => { byHolder[d.user]=(byHolder[d.user]||0)+d.amount; byType[d.depositType]=(byType[d.depositType]||0)+d.amount; byBank[d.bank]=(byBank[d.bank]||0)+d.amount; });
+        if (!data.length) {
+            alert('当前筛选条件下无存款数据');
+            return;
+        }
+        const totalAmount = data.reduce((s, d) => s + d.amount, 0);
+        const totalCurr = data.reduce((s, d) => s + (d.currentInterest || 0), 0);
+        const totalMat = data.reduce((s, d) => s + (d.totalInterest || 0), 0);
+        const byHolder = {}, byType = {}, byBank = {};
+        data.forEach(d => {
+            byHolder[d.user] = (byHolder[d.user] || 0) + d.amount;
+            byType[d.depositType] = (byType[d.depositType] || 0) + d.amount;
+            byBank[d.bank] = (byBank[d.bank] || 0) + d.amount;
+        });
         const monthMap = new Map();
-        data.forEach(d => { if(d.startDate){ let ym=d.startDate.slice(0,7); let cur=monthMap.get(ym)||{deposit:0,maturity:0}; cur.deposit+=d.amount; monthMap.set(ym,cur); } if(d.maturityDate){ let ym=d.maturityDate.slice(0,7); let cur=monthMap.get(ym)||{deposit:0,maturity:0}; cur.maturity+=d.amount; monthMap.set(ym,cur); } });
+        data.forEach(d => {
+            if (d.startDate) {
+                let ym = d.startDate.slice(0, 7);
+                let cur = monthMap.get(ym) || { deposit: 0, maturity: 0 };
+                cur.deposit += d.amount;
+                monthMap.set(ym, cur);
+            }
+            if (d.maturityDate) {
+                let ym = d.maturityDate.slice(0, 7);
+                let cur = monthMap.get(ym) || { deposit: 0, maturity: 0 };
+                cur.maturity += d.amount;
+                monthMap.set(ym, cur);
+            }
+        });
         const months = [...monthMap.keys()].sort();
-        const depositData = months.map(m=>monthMap.get(m).deposit), maturityData = months.map(m=>monthMap.get(m).maturity);
-        const modalDiv = document.createElement('div'); modalDiv.className = 'modal';
+        const depositData = months.map(m => monthMap.get(m).deposit);
+        const maturityData = months.map(m => monthMap.get(m).maturity);
+
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal';
         modalDiv.innerHTML = `<div class="modal-content" style="max-width:95%;width:700px;">
             <h3>📊 统计图表</h3><p style="text-align:center;">💰 ¥${totalAmount.toFixed(2)} | 💹 ¥${totalCurr.toFixed(2)} | 📅 ¥${totalMat.toFixed(2)}</p>
             <div class="chart-card"><div id="holderChart" style="height:220px;"></div><div style="font-size:10px;text-align:center;color:#9ca3af;">✨ 双击放大</div></div>
             <div class="chart-card"><div id="typeChart" style="height:220px;"></div><div style="font-size:10px;text-align:center;color:#9ca3af;">✨ 双击放大</div></div>
             <div class="chart-card"><div id="bankChart" style="height:220px;"></div><div style="font-size:10px;text-align:center;color:#9ca3af;">✨ 双击放大</div></div>
             <div class="chart-card"><div id="trendChart" style="height:280px;"></div><div style="font-size:10px;text-align:center;color:#9ca3af;">📆 月度存入 vs 到期金额</div></div>
-            <button id="closeStatsBtn" class="secondary small" style="margin-top:12px;width:100%;">关闭</button>
+            <button id="exportStatsPDFBtn" class="success small" style="margin-top:8px;width:100%;">📄 导出报表PDF</button>
+            <button id="closeStatsBtn" class="secondary small" style="margin-top:4px;width:100%;">关闭</button>
         </div>`;
         document.body.appendChild(modalDiv);
+
         const drawPie = (id, title, dataObj) => {
-            const chartDom = modalDiv.querySelector(`#${id}`); if(!chartDom) return;
+            const chartDom = modalDiv.querySelector(`#${id}`);
+            if (!chartDom) return;
             const chart = echarts.init(chartDom);
-            chart.setOption({ title:{text:title,left:'center',textStyle:{fontSize:13}}, tooltip:{trigger:'item',formatter:'{b}: ¥{c} ({d}%)'}, series:[{type:'pie',radius:['40%','65%'],data:Object.entries(dataObj).map(([n,v])=>({name:n,value:Math.round(v*100)/100})),label:{show:true,formatter:'{b}',fontSize:10}}] });
+            chart.setOption({
+                title: { text: title, left: 'center', textStyle: { fontSize: 13 } },
+                tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '65%'],
+                    data: Object.entries(dataObj).map(([n, v]) => ({ name: n, value: Math.round(v * 100) / 100 })),
+                    label: { show: true, formatter: '{b}', fontSize: 10 }
+                }]
+            });
             enableDoubleClickZoom(chart);
         };
-        drawPie('holderChart','持有人分布',byHolder); drawPie('typeChart','存款类型分布',byType); drawPie('bankChart','银行分布',byBank);
-        if(months.length){
+        drawPie('holderChart', '持有人分布', byHolder);
+        drawPie('typeChart', '存款类型分布', byType);
+        drawPie('bankChart', '银行分布', byBank);
+        if (months.length) {
             const trendChart = echarts.init(modalDiv.querySelector('#trendChart'));
-            trendChart.setOption({ tooltip:{trigger:'axis'}, legend:{data:['存入金额','到期金额']}, xAxis:{type:'category',data:months,axisLabel:{rotate:30}}, yAxis:{type:'value',name:'金额(元)'}, series:[{name:'存入金额',type:'bar',barWidth:'35%',data:depositData,itemStyle:{color:'#4f6ef7',borderRadius:[4,4,0,0]}},{name:'到期金额',type:'bar',barWidth:'35%',data:maturityData,itemStyle:{color:'#f59e0b',borderRadius:[4,4,0,0]}}] });
+            trendChart.setOption({
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['存入金额', '到期金额'] },
+                xAxis: { type: 'category', data: months, axisLabel: { rotate: 30 } },
+                yAxis: { type: 'value', name: '金额(元)' },
+                series: [
+                    { name: '存入金额', type: 'bar', barWidth: '35%', data: depositData, itemStyle: { color: '#4f6ef7', borderRadius: [4, 4, 0, 0] } },
+                    { name: '到期金额', type: 'bar', barWidth: '35%', data: maturityData, itemStyle: { color: '#f59e0b', borderRadius: [4, 4, 0, 0] } }
+                ]
+            });
             enableDoubleClickZoom(trendChart);
         }
+
         modalDiv.querySelector('#closeStatsBtn').onclick = () => modalDiv.remove();
-        modalDiv.addEventListener('click', e => { if(e.target===modalDiv) modalDiv.remove(); });
+        modalDiv.querySelector('#exportStatsPDFBtn').onclick = () => {
+            modalDiv.remove();
+            exportPDF();
+        };
+        modalDiv.addEventListener('click', e => {
+            if (e.target === modalDiv) modalDiv.remove();
+        });
     }
 
     // ========== 到期提醒 ==========
-    async function checkReminders(manual=false) {
+    async function checkReminders(manual = false) {
         const upcoming = await getUpcomingMaturities(currentUser);
         if (upcoming.length) {
             let msg = '📢 <b>未来7天到期存款：</b>\n\n';
-            for (let d of upcoming) { const days = Math.ceil((new Date(d.maturityDate)-new Date())/(1000*3600*24)); msg += `• ${d.bank} ${d.depositType} — ¥${d.amount.toFixed(2)} — <b>${days}天</b>后到期 (${d.maturityDate})\n`; }
-            const modalDiv = document.createElement('div'); modalDiv.className = 'modal';
+            for (let d of upcoming) {
+                const days = Math.ceil((new Date(d.maturityDate) - new Date()) / (1000 * 3600 * 24));
+                msg += `• ${d.bank} ${d.depositType} — ¥${d.amount.toFixed(2)} — <b>${days}天</b>后到期 (${d.maturityDate})\n`;
+            }
+            const modalDiv = document.createElement('div');
+            modalDiv.className = 'modal';
             modalDiv.innerHTML = `<div class="modal-content" style="max-width:450px;"><h3>⏰ 到期提醒</h3><div style="white-space:pre-line;font-size:0.9rem;line-height:1.7;">${msg}</div><button id="closeRemindModal" class="secondary small" style="margin-top:12px;width:100%;">关闭</button></div>`;
             document.body.appendChild(modalDiv);
             modalDiv.querySelector('#closeRemindModal').onclick = () => modalDiv.remove();
-            modalDiv.addEventListener('click', e => { if(e.target===modalDiv) modalDiv.remove(); });
-        } else if (manual) alert('✅ 未来7天内没有即将到期的存款');
+            modalDiv.addEventListener('click', e => {
+                if (e.target === modalDiv) modalDiv.remove();
+            });
+        } else if (manual) {
+            alert('✅ 未来7天内没有即将到期的存款');
+        }
     }
-    async function getUpcomingMaturities(user, days=7) {
+
+    async function getUpcomingMaturities(user, days = 7) {
         const deposits = await getDeposits(user);
-        const today = todayStart(); const future = new Date(today); future.setDate(today.getDate()+days);
-        return deposits.filter(d => { if(!d.maturityDate) return false; const mat = parseDate(d.maturityDate); if(!mat) return false; return mat >= today && mat <= future; });
+        const today = todayStart();
+        const future = new Date(today);
+        future.setDate(today.getDate() + days);
+        return deposits.filter(d => {
+            if (!d.maturityDate) return false;
+            const mat = parseDate(d.maturityDate);
+            if (!mat) return false;
+            return mat >= today && mat <= future;
+        });
     }
 
     // ========== 到期预测 ==========
     async function getMonthlyMaturityForecast(user) {
         const deposits = await getDeposits(user);
-        const today = todayStart(); const endDate = new Date(today); endDate.setDate(today.getDate()+365);
+        const today = todayStart();
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + 365);
         const monthly = {};
-        for (let d of deposits) { if(!d.maturityDate) continue; const mat = parseDate(d.maturityDate); if(!mat || mat<today || mat>endDate) continue; const total = d.amount + await calculateTotalInterest(d); const key = `${mat.getFullYear()}-${String(mat.getMonth()+1).padStart(2,'0')}`; monthly[key] = (monthly[key]||0)+total; }
+        for (let d of deposits) {
+            if (!d.maturityDate) continue;
+            const mat = parseDate(d.maturityDate);
+            if (!mat || mat < today || mat > endDate) continue;
+            const total = d.amount + await calculateTotalInterest(d);
+            const key = `${mat.getFullYear()}-${String(mat.getMonth() + 1).padStart(2, '0')}`;
+            monthly[key] = (monthly[key] || 0) + total;
+        }
         return monthly;
     }
+
     async function showForecast() {
         const monthly = await getMonthlyMaturityForecast(currentUser);
         const months = Object.keys(monthly).sort();
-        if (!months.length) { alert('未来12个月无到期存款'); return; }
-        const amounts = months.map(m=>monthly[m]);
-        const modalDiv = document.createElement('div'); modalDiv.className = 'modal'; modalDiv.style.zIndex = '2000';
+        if (!months.length) {
+            alert('未来12个月无到期存款');
+            return;
+        }
+        const amounts = months.map(m => monthly[m]);
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'modal';
+        modalDiv.style.zIndex = '2000';
         modalDiv.innerHTML = `<div class="modal-content" style="max-width:95%;width:500px;"><h3 style="text-align:center;">📈 未来12个月到期资金预测</h3><div id="forecastChart" style="height:300px;"></div><button id="closeForecastBtn" class="secondary small" style="margin-top:12px;width:100%;">关闭</button></div>`;
         document.body.appendChild(modalDiv);
         const chart = echarts.init(modalDiv.querySelector('#forecastChart'));
-        chart.setOption({ tooltip:{trigger:'axis',formatter:p=>`${p[0].axisValue}<br/>到期: <b>¥${p[0].value.toFixed(2)}</b>`}, xAxis:{type:'category',data:months,axisLabel:{rotate:30}}, yAxis:{type:'value',name:'金额(元)'}, series:[{type:'bar',data:amounts,itemStyle:{color:'#10b981',borderRadius:[6,6,0,0]},label:{show:true,position:'top',formatter:p=>(p.value/10000).toFixed(1)+'万'}}] });
+        chart.setOption({
+            tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>到期: <b>¥${p[0].value.toFixed(2)}</b>` },
+            xAxis: { type: 'category', data: months, axisLabel: { rotate: 30 } },
+            yAxis: { type: 'value', name: '金额(元)' },
+            series: [{
+                type: 'bar',
+                data: amounts,
+                itemStyle: { color: '#10b981', borderRadius: [6, 6, 0, 0] },
+                label: { show: true, position: 'top', formatter: p => (p.value / 10000).toFixed(1) + '万' }
+            }]
+        });
         enableDoubleClickZoom(chart);
         modalDiv.querySelector('#closeForecastBtn').onclick = () => modalDiv.remove();
-        modalDiv.addEventListener('click', e => { if(e.target===modalDiv) modalDiv.remove(); });
+        modalDiv.addEventListener('click', e => {
+            if (e.target === modalDiv) modalDiv.remove();
+        });
     }
 
-    // ========== PDF 导出（保存到备份文件夹） ==========
-    async function exportPDF() {
-        if (typeof html2canvas === 'undefined') { alert('PDF组件未加载，请检查网络'); return; }
-        showToast('📄 正在生成高清PDF...');
-        const data = currentFilteredDeposits.length > 0 ? currentFilteredDeposits : allDeposits;
-        if (!data.length) { showToast('⚠️ 无数据可导出'); return; }
-        const tableHTML = `<div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;"><h2 style="text-align:center;color:#4f6ef7;">存款报表</h2><p style="text-align:center;color:#5a6c7d;">${escapeHtml(currentUser===null?'所有用户合计':currentUser)} | ${new Date().toLocaleString()}</p><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#4f6ef7;color:white;"><th>银行</th><th>类型</th><th>持有人</th><th>金额</th><th>起始日</th><th>到期日</th><th>利率%</th><th>计息</th><th>当前利息</th><th>到期利息</th></tr></thead><tbody>${data.map((d,i)=>`<tr style="background:${i%2===0?'#f8fafc':'white'};"><td>${escapeHtml(d.bank)}</td><td>${escapeHtml(d.depositType)}</td><td>${escapeHtml(d.user)}</td><td style="text-align:right;">¥${d.amount.toFixed(2)}</td><td>${d.startDate||'-'}</td><td>${d.maturityDate||'-'}</td><td style="text-align:right;">${d.rate!=null?d.rate.toFixed(2):'-'}</td><td>${d.interestType==='compound'?'复利':'单利'}</td><td style="text-align:right;">¥${d.currentInterest.toFixed(2)}</td><td style="text-align:right;">¥${d.totalInterest.toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
-        const container = document.createElement('div'); container.style.position='absolute'; container.style.left='-9999px'; container.style.width='1100px'; container.innerHTML = tableHTML; document.body.appendChild(container);
-        try {
-            const canvas = await html2canvas(container, { scale:2, useCORS:true, logging:false, backgroundColor:'#ffffff' });
-            const imgData = canvas.toDataURL('image/png');
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('landscape','mm','a4');
-            const pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight(), margin=10;
-            const imgWidth = pageWidth - margin*2, imgHeight = (canvas.height * imgWidth) / canvas.width;
-            let heightLeft = imgHeight, position = margin;
-            doc.addImage(imgData,'PNG',margin,position,imgWidth,imgHeight);
-            heightLeft -= pageHeight;
-            while (heightLeft > 0) { position = margin - (imgHeight - heightLeft); doc.addPage(); doc.addImage(imgData,'PNG',margin,position,imgWidth,imgHeight); heightLeft -= pageHeight; }
-            const label = currentUser===null?'合计':currentUser;
-            const filename = `存款报表_${label}_${new Date().toISOString().slice(0,10)}.pdf`;
-            const pdfOutput = doc.output('blob');
-            if (window.cordova?.file && cordovaReady) {
-                await exportWithCordova(pdfOutput, filename, 'application/pdf');
-                showToast('✅ PDF已保存到 Download/存款管家备份');
-            } else {
-                doc.save(filename);
-                showToast('📄 PDF已下载');
-            }
-        } catch (e) { console.error(e); showToast('❌ PDF生成失败'); }
-        finally { document.body.removeChild(container); }
+    function escapeHtml(str) {
+        if (!str) return '';
+        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        return str.replace(/[&<>"']/g, m => map[m]);
     }
 
-    function escapeHtml(str) { if (!str) return ''; const map={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}; return str.replace(/[&<>"']/g, m=>map[m]); }
-    function populateYearSelectors() { const cy = new Date().getFullYear(); const years = []; for (let y=cy-5; y<=cy+5; y++) years.push(y); const update = id => { const s=document.getElementById(id); if(s) s.innerHTML='<option value="">全部</option>'+years.map(y=>`<option value="${y}">${y}年</option>`).join(''); }; update('startYearQuick'); update('maturityYearQuick'); }
+    function populateYearSelectors() {
+        const cy = new Date().getFullYear();
+        const years = [];
+        for (let y = cy - 5; y <= cy + 5; y++) years.push(y);
+        const update = id => {
+            const s = document.getElementById(id);
+            if (s) s.innerHTML = '<option value="">全部</option>' + years.map(y => `<option value="${y}">${y}年</option>`).join('');
+        };
+        update('startYearQuick');
+        update('maturityYearQuick');
+    }
 
     // ========== 事件绑定 ==========
     function bindEvents() {
-        document.getElementById('userSelect').addEventListener('change', async e => { currentUser = e.target.value==='__all__'?null:e.target.value; await refreshData(); });
-        document.getElementById('addUserBtn').addEventListener('click', async () => { const name=prompt('新用户名'); if(name && await addUser(name)) { await refreshUserSelector(); await refreshData(); showToast('✅ 用户已添加'); } else if(name) alert('添加失败或已存在'); });
+        document.getElementById('userSelect').addEventListener('change', async e => {
+            currentUser = e.target.value === '__all__' ? null : e.target.value;
+            await refreshData();
+        });
+        document.getElementById('addUserBtn').addEventListener('click', async () => {
+            const name = prompt('新用户名');
+            if (name && await addUser(name)) {
+                await refreshUserSelector();
+                await refreshData();
+                showToast('✅ 用户已添加');
+            } else if (name) {
+                alert('添加失败或已存在');
+            }
+        });
         document.getElementById('manageUserBtn').addEventListener('click', showManageUsersModal);
         document.getElementById('statsBtn').addEventListener('click', showStatsModal);
-        document.getElementById('remindBtn').addEventListener('click', ()=>checkReminders(true));
+        document.getElementById('remindBtn').addEventListener('click', () => checkReminders(true));
         document.getElementById('forecastBtn').addEventListener('click', showForecast);
         document.getElementById('fixDataBtn').addEventListener('click', fixDuplicateRecords);
-        document.getElementById('searchInput').addEventListener('input', ()=>updateList());
-        document.getElementById('addDepositBtn').addEventListener('click', ()=>showDepositModal());
-        document.getElementById('backupCsvBtn').addEventListener('click', async () => { const csv = generateCSVBlob(currentUser, await getDeposits(currentUser)); const ts = new Date().toISOString().slice(0,19).replace(/:/g,'-'); const fn = `存款备份_${currentUser===null?'合计':currentUser}_${ts}.csv`; if (window.cordova?.file && cordovaReady) await exportWithCordova(csv, fn, 'text/csv'); else fallbackDownload(csv, fn, 'text/csv'); });
+        document.getElementById('searchInput').addEventListener('input', () => updateList());
+        document.getElementById('addDepositBtn').addEventListener('click', () => showDepositModal());
+        document.getElementById('backupCsvBtn').addEventListener('click', async () => {
+            const csv = generateCSVBlob(currentUser, await getDeposits(currentUser));
+            const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            const fn = `存款备份_${currentUser === null ? '合计' : currentUser}_${ts}.csv`;
+            if (window.cordova?.file && cordovaReady) {
+                await exportWithCordova(csv, fn, 'text/csv');
+            } else {
+                fallbackDownload(csv, fn, 'text/csv');
+            }
+        });
         document.getElementById('backupJsonBtn').addEventListener('click', backupJSON);
         document.getElementById('openBackupFolderBtn').addEventListener('click', openBackupFolder);
         document.getElementById('pdfBtn').addEventListener('click', exportPDF);
-        document.getElementById('sortSelect').addEventListener('change', async ()=>{ applySort(); await updateList(); });
+        document.getElementById('sortSelect').addEventListener('change', async () => {
+            applySort();
+            await updateList();
+        });
 
-        // 恢复按钮绑定（label包裹input，无需额外click，input的change事件即可触发）
         const fileInput = document.getElementById('restoreFileInput');
         fileInput.addEventListener('change', async e => {
-            if(!e.target.files.length) return;
-            try { const result = await importFromCSV(e.target.files[0]); alert(`✅ 导入完成：新增 ${result.added} 条记录。\n涉及用户：${result.users.join(', ')}`); await refreshUserSelector(); await refreshData(); } catch(err) { alert('恢复失败：'+err.message); }
-            fileInput.value='';
+            if (!e.target.files.length) return;
+            try {
+                const result = await importFromCSV(e.target.files[0]);
+                alert(`✅ 导入完成：新增 ${result.added} 条记录。\n涉及用户：${result.users.join(', ')}`);
+                await refreshUserSelector();
+                await refreshData();
+            } catch (err) {
+                alert('恢复失败：' + err.message);
+            }
+            fileInput.value = '';
         });
 
         const jsonInput = document.getElementById('restoreJsonInput');
         jsonInput.addEventListener('change', async e => {
-            if(!e.target.files.length) return;
-            try { await restoreJSON(e.target.files[0]); } catch(err) { alert('JSON恢复失败：'+err.message); }
-            jsonInput.value='';
+            if (!e.target.files.length) return;
+            try {
+                await restoreJSON(e.target.files[0]);
+            } catch (err) {
+                alert('JSON恢复失败：' + err.message);
+            }
+            jsonInput.value = '';
         });
 
-        document.getElementById('startYearQuick').addEventListener('change', function() { const y=this.value; document.getElementById('startDateFrom').value = y?`${y}-01-01`:''; document.getElementById('startDateTo').value = y?`${y}-12-31`:''; updateList(); });
-        document.getElementById('maturityYearQuick').addEventListener('change', function() { const y=this.value; document.getElementById('maturityDateFrom').value = y?`${y}-01-01`:''; document.getElementById('maturityDateTo').value = y?`${y}-12-31`:''; updateList(); });
+        document.getElementById('startYearQuick').addEventListener('change', function () {
+            const y = this.value;
+            document.getElementById('startDateFrom').value = y ? `${y}-01-01` : '';
+            document.getElementById('startDateTo').value = y ? `${y}-12-31` : '';
+            updateList();
+        });
+        document.getElementById('maturityYearQuick').addEventListener('change', function () {
+            const y = this.value;
+            document.getElementById('maturityDateFrom').value = y ? `${y}-01-01` : '';
+            document.getElementById('maturityDateTo').value = y ? `${y}-12-31` : '';
+            updateList();
+        });
 
-        ['filterBank','filterType','filterHolder','minAmount','maxAmount','startDateFrom','startDateTo','maturityDateFrom','maturityDateTo'].forEach(id => { const el=document.getElementById(id); if(el) el.addEventListener((id==='minAmount'||id==='maxAmount')?'input':'change', ()=>updateList()); });
-        document.getElementById('clearFiltersBtn').addEventListener('click', ()=>{ ['filterBank','filterType','filterHolder','minAmount','maxAmount','searchInput','startDateFrom','startDateTo','maturityDateFrom','maturityDateTo'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); document.getElementById('startYearQuick').value=''; document.getElementById('maturityYearQuick').value=''; updateList(); showToast('✅ 筛选条件已清除'); });
+        ['filterBank', 'filterType', 'filterHolder', 'minAmount', 'maxAmount', 'startDateFrom', 'startDateTo', 'maturityDateFrom', 'maturityDateTo'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                const eventType = (id === 'minAmount' || id === 'maxAmount') ? 'input' : 'change';
+                el.addEventListener(eventType, () => updateList());
+            }
+        });
+        document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+            ['filterBank', 'filterType', 'filterHolder', 'minAmount', 'maxAmount', 'searchInput', 'startDateFrom', 'startDateTo', 'maturityDateFrom', 'maturityDateTo'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            document.getElementById('startYearQuick').value = '';
+            document.getElementById('maturityYearQuick').value = '';
+            updateList();
+            showToast('✅ 筛选条件已清除');
+        });
 
-        const toggleBtn = document.getElementById('filterToggleBtn'), panel = document.getElementById('filterPanel');
-        if(toggleBtn && panel) {
-            toggleBtn.addEventListener('click', ()=>{ const collapsed = panel.classList.toggle('collapsed'); toggleBtn.textContent = collapsed ? '🔍 展开筛选条件' : '🔍 收起筛选条件'; });
-            if(window.innerWidth<=640){ panel.classList.add('collapsed'); toggleBtn.style.display='block'; } else { panel.classList.remove('collapsed'); toggleBtn.style.display='none'; }
-            window.addEventListener('resize', ()=>{ if(window.innerWidth<=640){ toggleBtn.style.display='block'; } else { toggleBtn.style.display='none'; panel.classList.remove('collapsed'); } });
+        const toggleBtn = document.getElementById('filterToggleBtn');
+        const panel = document.getElementById('filterPanel');
+        if (toggleBtn && panel) {
+            toggleBtn.addEventListener('click', () => {
+                const collapsed = panel.classList.toggle('collapsed');
+                toggleBtn.textContent = collapsed ? '🔍 展开筛选条件' : '🔍 收起筛选条件';
+            });
+            if (window.innerWidth <= 640) {
+                panel.classList.add('collapsed');
+                toggleBtn.style.display = 'block';
+            } else {
+                panel.classList.remove('collapsed');
+                toggleBtn.style.display = 'none';
+            }
+            window.addEventListener('resize', () => {
+                if (window.innerWidth <= 640) {
+                    toggleBtn.style.display = 'block';
+                } else {
+                    toggleBtn.style.display = 'none';
+                    panel.classList.remove('collapsed');
+                }
+            });
         }
     }
 
     (async function init() {
-        await openDB(); let users = await getUsers(); if (!users.length) await addUser('我的存款');
-        currentUser = null; await refreshUserSelector(); await refreshData(); bindEvents(); populateYearSelectors();
-        document.getElementById('startDateFrom').value=''; document.getElementById('startDateTo').value=''; document.getElementById('maturityDateFrom').value=''; document.getElementById('maturityDateTo').value='';
-        document.addEventListener('deviceready', () => { cordovaReady = true; showToast('📱 存款管家旗舰版已就绪', 3000); }, false);
+        await openDB();
+        let users = await getUsers();
+        if (!users.length) await addUser('我的存款');
+        currentUser = null;
+        await refreshUserSelector();
+        await refreshData();
+        bindEvents();
+        populateYearSelectors();
+        document.getElementById('startDateFrom').value = '';
+        document.getElementById('startDateTo').value = '';
+        document.getElementById('maturityDateFrom').value = '';
+        document.getElementById('maturityDateTo').value = '';
+        document.addEventListener('deviceready', () => {
+            cordovaReady = true;
+            showToast('📱 存款管家旗舰版已就绪', 3000);
+        }, false);
         checkReminders(false);
-        setInterval(() => checkReminders(false), 24*3600*1000);
+        setInterval(() => checkReminders(false), 24 * 3600 * 1000);
     })();
 })();
 </script>
