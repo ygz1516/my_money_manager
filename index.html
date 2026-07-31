@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>存款管家 · 旗舰版</title>
     <style>
-        /* === 样式与之前完全一致，此处省略（与上一版相同） === */
+        /* ===== 样式不变，与上一版相同 ===== */
         :root {
             --bg: #f0f4f8; --card-bg: #ffffff; --text: #1a202c; --text-secondary: #5a6c7d;
             --primary: #4f6ef7; --primary-hover: #3b54db; --success: #10b981; --warning: #f59e0b;
@@ -103,6 +103,7 @@
 </head>
 <body>
 <div id="app" class="app-container">
+    <!-- 界面与之前完全相同，省略重复代码，但为了完整性此处保留 -->
     <div class="card">
         <div class="header">
             <div class="app-title"><span>💰</span>存款管家 · 旗舰版</div>
@@ -175,6 +176,9 @@
 
 <script src="cordova.js"></script>
 <script>
+// ============================================================
+// 完整脚本（包含修复版 exportPDF）
+// ============================================================
 (function() {
     // ======================== 预设数据 ========================
     const PRESET_BANKS = ["中国工商银行","中国建设银行","中国农业银行","中国银行","交通银行","重庆银行","重庆农村商业银行","微众银行","蓝海银行","邮储银行","招商银行","浦发银行","中信银行","其他银行","微信理财","支付宝理财","股票基金"];
@@ -463,7 +467,6 @@
         return await calculateInterest(deposit, mat);
     }
 
-    // 并行计算利息
     async function enrichDeposits(deposits) {
         const enriched = await Promise.all(deposits.map(async d => {
             d.amount = Number(d.amount);
@@ -1077,7 +1080,7 @@
             users.map(u => `<option value="${escapeHtml(u)}" ${u === currentUser ? 'selected' : ''}>${escapeHtml(u)}</option>`).join('');
     }
 
-    // ========== 模态框：存款编辑（增强存期） ==========
+    // ========== 模态框：存款编辑 ==========
     function parseTermValue(termVal) {
         if (termVal === '0' || termVal === 'custom') return null;
         const match = termVal.match(/^(\d+)([dmy])$/);
@@ -1395,250 +1398,274 @@
         };
     }
 
-    // ========== 增强型 PDF 导出：图表单独最后一页 ==========
+    // ============================================================
+    // ========== 修复版 PDF 导出（稳健、分页、图表独立） ==========
+    // ============================================================
     async function exportPDF() {
-        if (typeof html2canvas === 'undefined' || typeof echarts === 'undefined') {
-            alert('请确保 html2canvas 和 ECharts 已加载');
-            return;
-        }
-
-        const data = currentFilteredDeposits.length > 0 ? currentFilteredDeposits : allDeposits;
-        if (!data.length) {
-            showToast('⚠️ 无数据可导出');
-            return;
-        }
-
-        // 1. 准备汇总数据
-        const totalAmount = data.reduce((s, d) => s + d.amount, 0);
-        const totalCurr = data.reduce((s, d) => s + (d.currentInterest || 0), 0);
-        const totalMat = data.reduce((s, d) => s + (d.totalInterest || 0), 0);
-
-        // 2. 准备图表数据
-        const byBank = {}, byType = {}, byHolder = {};
-        const monthMap = new Map();
-        data.forEach(d => {
-            byBank[d.bank] = (byBank[d.bank] || 0) + d.amount;
-            byType[d.depositType] = (byType[d.depositType] || 0) + d.amount;
-            byHolder[d.user] = (byHolder[d.user] || 0) + d.amount;
-            if (d.startDate) {
-                const ym = d.startDate.slice(0,7);
-                const cur = monthMap.get(ym) || { deposit:0, maturity:0 };
-                cur.deposit += d.amount;
-                monthMap.set(ym, cur);
+        try {
+            // 检查依赖
+            if (typeof html2canvas === 'undefined' || typeof echarts === 'undefined') {
+                alert('请确保 html2canvas 和 ECharts 已加载');
+                return;
             }
-            if (d.maturityDate) {
-                const ym = d.maturityDate.slice(0,7);
-                const cur = monthMap.get(ym) || { deposit:0, maturity:0 };
-                cur.maturity += d.amount;
-                monthMap.set(ym, cur);
+
+            const data = currentFilteredDeposits.length > 0 ? currentFilteredDeposits : allDeposits;
+            if (!data.length) {
+                showToast('⚠️ 无数据可导出');
+                return;
             }
-        });
-        const months = [...monthMap.keys()].sort();
-        const depositData = months.map(m => monthMap.get(m).deposit);
-        const maturityData = months.map(m => monthMap.get(m).maturity);
 
-        // 3. 构建表格分页（每页最多20行）
-        const ROWS_PER_PAGE = 20;
-        const totalRows = data.length;
-        const pageData = [];
-        for (let i = 0; i < totalRows; i += ROWS_PER_PAGE) {
-            pageData.push(data.slice(i, i + ROWS_PER_PAGE));
-        }
-        const totalTablePages = pageData.length;  // 表格页数
+            showToast('📄 正在生成报表，请稍候...', 6000);
 
-        // 4. 生成每页HTML（表格页，无图表）
-        function buildTablePageHTML(pageData, pageNum, totalPages) {
-            const headerRow = `
-                <tr style="background:#4f6ef7;color:white;font-weight:bold;">
-                    <th>银行</th><th>类型</th><th>持有人</th><th>金额</th><th>起始日</th><th>到期日</th><th>利率%</th><th>计息</th><th>当前利息</th><th>到期利息</th>
-                </tr>
-            `;
-            const rowsHTML = pageData.map((d, idx) => `
-                <tr style="background:${idx%2===0?'#f8fafc':'white'};">
-                    <td>${escapeHtml(d.bank)}</td>
-                    <td>${escapeHtml(d.depositType)}</td>
-                    <td>${escapeHtml(d.user)}</td>
-                    <td style="text-align:right;">¥${d.amount.toFixed(2)}</td>
-                    <td>${d.startDate || '-'}</td>
-                    <td>${d.maturityDate || '-'}</td>
-                    <td style="text-align:right;">${d.rate != null ? d.rate.toFixed(2) : '-'}</td>
-                    <td>${d.interestType === 'compound' ? '复利' : '单利'}</td>
-                    <td style="text-align:right;">¥${d.currentInterest.toFixed(2)}</td>
-                    <td style="text-align:right;">¥${d.totalInterest.toFixed(2)}</td>
-                </tr>
-            `).join('');
+            // 准备汇总数据
+            const totalAmount = data.reduce((s, d) => s + d.amount, 0);
+            const totalCurr = data.reduce((s, d) => s + (d.currentInterest || 0), 0);
+            const totalMat = data.reduce((s, d) => s + (d.totalInterest || 0), 0);
 
-            return `
-                <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;">
-                    <h2 style="text-align:center;color:#4f6ef7;">💰 存款报表</h2>
-                    <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()} | 第 ${pageNum+1}/${totalPages} 页</p>
-                    <div style="display:flex;justify-content:space-around;margin:10px 0;background:#f0f4f8;border-radius:12px;padding:8px;">
-                        <div><b>本金</b> ¥${totalAmount.toFixed(2)}</div>
-                        <div><b>当前利息</b> ¥${totalCurr.toFixed(2)}</div>
-                        <div><b>到期利息</b> ¥${totalMat.toFixed(2)}</div>
-                        <div><b>笔数</b> ${totalRows}</div>
-                    </div>
-                    <table style="width:100%;border-collapse:collapse;font-size:11px;">
-                        <thead>${headerRow}</thead>
-                        <tbody>${rowsHTML}</tbody>
-                    </table>
-                </div>
-            `;
-        }
-
-        // 5. 构建最后一页（仅图表，无表格）
-        function buildChartsPageHTML() {
-            const hasCharts = Object.keys(byBank).length > 0 || months.length > 0;
-            if (!hasCharts) return null;
-
-            // 图表容器，使用唯一ID避免冲突
-            const chartIdSuffix = Date.now();
-            return `
-                <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;height:100%;display:flex;flex-direction:column;justify-content:center;">
-                    <h2 style="text-align:center;color:#4f6ef7;">📊 存款分布图表</h2>
-                    <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()}</p>
-                    <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;flex:1;">
-                        <div style="width:45%;min-width:280px;height:250px;" id="pdfBankChart_${chartIdSuffix}"></div>
-                        <div style="width:45%;min-width:280px;height:250px;" id="pdfTypeChart_${chartIdSuffix}"></div>
-                        <div style="width:45%;min-width:280px;height:250px;" id="pdfHolderChart_${chartIdSuffix}"></div>
-                        ${months.length ? `<div style="width:90%;min-width:400px;height:300px;" id="pdfTrendChart_${chartIdSuffix}"></div>` : ''}
-                    </div>
-                </div>
-            `;
-        }
-
-        // 6. 处理每一页：截图并添加到PDF
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF('landscape', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 10;
-        const contentWidth = pageWidth - margin * 2;
-
-        // 6.1 处理表格页
-        for (let p = 0; p < totalTablePages; p++) {
-            const htmlStr = buildTablePageHTML(pageData[p], p, totalTablePages + 1); // 总页数为表格页+1（图表页）
-            const container = document.createElement('div');
-            container.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
-            container.innerHTML = htmlStr;
-            document.body.appendChild(container);
-            await new Promise(resolve => setTimeout(resolve, 50));
-
-            const canvas = await html2canvas(container, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
-            });
-            const scaleFactor = contentWidth / canvas.width;
-            const imgWidth = contentWidth;
-            const imgHeight = canvas.height * scaleFactor;
-
-            if (p === 0) {
-                pdf.addImage(canvas, 'PNG', margin, margin, imgWidth, imgHeight);
-            } else {
-                pdf.addPage();
-                pdf.addImage(canvas, 'PNG', margin, margin, imgWidth, imgHeight);
-            }
-            document.body.removeChild(container);
-        }
-
-        // 6.2 处理图表页（最后一页）
-        const chartsHTML = buildChartsPageHTML();
-        if (chartsHTML) {
-            const container = document.createElement('div');
-            container.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
-            container.innerHTML = chartsHTML;
-            document.body.appendChild(container);
-            await new Promise(resolve => setTimeout(resolve, 50));
-
-            // 渲染图表
-            const chartIdSuffix = Date.now(); // 注意：html中已使用时间戳，需要获取
-            // 由于时间戳在html中生成，我们需要从html中提取ID或重新生成，这里简化：由于chartsHTML使用了变量，我们重新获取
-            // 实际我们可以在生成时保留ID，这里直接使用固定ID，但要注意避免冲突
-            // 更好的方式：在生成chartsHTML时使用变量，但我们直接重新生成一次并直接使用
-            // 我们重新生成chartsHTML并传入一个唯一id
-            const uid = 'c' + Date.now();
-            const chartsHTML2 = `
-                <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;height:100%;display:flex;flex-direction:column;justify-content:center;">
-                    <h2 style="text-align:center;color:#4f6ef7;">📊 存款分布图表</h2>
-                    <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()}</p>
-                    <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;flex:1;">
-                        <div style="width:45%;min-width:280px;height:250px;" id="pdfBankChart_${uid}"></div>
-                        <div style="width:45%;min-width:280px;height:250px;" id="pdfTypeChart_${uid}"></div>
-                        <div style="width:45%;min-width:280px;height:250px;" id="pdfHolderChart_${uid}"></div>
-                        ${months.length ? `<div style="width:90%;min-width:400px;height:300px;" id="pdfTrendChart_${uid}"></div>` : ''}
-                    </div>
-                </div>
-            `;
-            container.innerHTML = chartsHTML2;
-            await new Promise(resolve => setTimeout(resolve, 50));
-
-            // 渲染图表
-            try {
-                const renderPie = (id, title, dataObj) => {
-                    const dom = container.querySelector(`#${id}`);
-                    if (!dom) return;
-                    const chart = echarts.init(dom);
-                    chart.setOption({
-                        title: { text: title, left: 'center', textStyle: { fontSize: 12 } },
-                        tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
-                        series: [{ type: 'pie', radius: ['40%','65%'], data: Object.entries(dataObj).map(([n,v]) => ({ name:n, value:Math.round(v*100)/100 })) }]
-                    });
-                };
-                renderPie(`pdfBankChart_${uid}`, '银行分布', byBank);
-                renderPie(`pdfTypeChart_${uid}`, '类型分布', byType);
-                renderPie(`pdfHolderChart_${uid}`, '持有人分布', byHolder);
-                if (months.length) {
-                    const dom = container.querySelector(`#pdfTrendChart_${uid}`);
-                    if (dom) {
-                        const chart = echarts.init(dom);
-                        chart.setOption({
-                            tooltip: { trigger: 'axis' },
-                            legend: { data: ['存入金额','到期金额'] },
-                            xAxis: { type: 'category', data: months, axisLabel: { rotate: 30 } },
-                            yAxis: { type: 'value', name: '金额(元)' },
-                            series: [
-                                { name: '存入金额', type: 'bar', barWidth: '35%', data: depositData, itemStyle: { color: '#4f6ef7', borderRadius: [4,4,0,0] } },
-                                { name: '到期金额', type: 'bar', barWidth: '35%', data: maturityData, itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] } }
-                            ]
-                        });
-                    }
+            // 准备图表数据
+            const byBank = {}, byType = {}, byHolder = {};
+            const monthMap = new Map();
+            data.forEach(d => {
+                byBank[d.bank] = (byBank[d.bank] || 0) + d.amount;
+                byType[d.depositType] = (byType[d.depositType] || 0) + d.amount;
+                byHolder[d.user] = (byHolder[d.user] || 0) + d.amount;
+                if (d.startDate) {
+                    const ym = d.startDate.slice(0,7);
+                    const cur = monthMap.get(ym) || { deposit:0, maturity:0 };
+                    cur.deposit += d.amount;
+                    monthMap.set(ym, cur);
                 }
-                await new Promise(resolve => setTimeout(resolve, 500)); // 等待图表渲染完成
-            } catch(e) { console.warn('图表渲染失败', e); }
-
-            // 截图图表页
-            const canvas = await html2canvas(container, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: '#ffffff'
+                if (d.maturityDate) {
+                    const ym = d.maturityDate.slice(0,7);
+                    const cur = monthMap.get(ym) || { deposit:0, maturity:0 };
+                    cur.maturity += d.amount;
+                    monthMap.set(ym, cur);
+                }
             });
-            const scaleFactor = contentWidth / canvas.width;
-            const imgWidth = contentWidth;
-            const imgHeight = canvas.height * scaleFactor;
+            const months = [...monthMap.keys()].sort();
+            const depositData = months.map(m => monthMap.get(m).deposit);
+            const maturityData = months.map(m => monthMap.get(m).maturity);
+            const hasCharts = Object.keys(byBank).length > 0 || months.length > 0;
 
-            pdf.addPage();
-            pdf.addImage(canvas, 'PNG', margin, margin, imgWidth, imgHeight);
-            document.body.removeChild(container);
-        }
+            const ROWS_PER_PAGE = 20;
+            const totalRows = data.length;
+            const tablePages = [];
+            for (let i = 0; i < totalRows; i += ROWS_PER_PAGE) {
+                tablePages.push(data.slice(i, i + ROWS_PER_PAGE));
+            }
+            const totalTablePages = tablePages.length;
 
-        // 7. 保存PDF
-        const label = currentUser === null ? '合计' : currentUser;
-        const filename = `存款报表_${label}_${new Date().toISOString().slice(0,10)}.pdf`;
-        const pdfBlob = pdf.output('blob');
+            // 生成每页 HTML（表格页）
+            function buildTableHTML(pageData, pageNum, totalPages) {
+                const headerRow = `
+                    <tr style="background:#4f6ef7;color:white;font-weight:bold;">
+                        <th>银行</th><th>类型</th><th>持有人</th><th>金额</th><th>起始日</th><th>到期日</th><th>利率%</th><th>计息</th><th>当前利息</th><th>到期利息</th>
+                    </tr>
+                `;
+                const rowsHTML = pageData.map((d, idx) => `
+                    <tr style="background:${idx%2===0?'#f8fafc':'white'};">
+                        <td>${escapeHtml(d.bank)}</td>
+                        <td>${escapeHtml(d.depositType)}</td>
+                        <td>${escapeHtml(d.user)}</td>
+                        <td style="text-align:right;">¥${d.amount.toFixed(2)}</td>
+                        <td>${d.startDate || '-'}</td>
+                        <td>${d.maturityDate || '-'}</td>
+                        <td style="text-align:right;">${d.rate != null ? d.rate.toFixed(2) : '-'}</td>
+                        <td>${d.interestType === 'compound' ? '复利' : '单利'}</td>
+                        <td style="text-align:right;">¥${d.currentInterest.toFixed(2)}</td>
+                        <td style="text-align:right;">¥${d.totalInterest.toFixed(2)}</td>
+                    </tr>
+                `).join('');
 
-        if (window.cordova?.file && cordovaReady) {
-            await exportWithCordova(pdfBlob, filename, 'application/pdf');
-            showToast('✅ PDF已保存到 Download/存款管家备份');
-        } else {
-            pdf.save(filename);
-            showToast('📄 PDF已下载');
+                return `
+                    <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;">
+                        <h2 style="text-align:center;color:#4f6ef7;">💰 存款报表</h2>
+                        <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()} | 第 ${pageNum+1}/${totalPages} 页</p>
+                        <div style="display:flex;justify-content:space-around;margin:10px 0;background:#f0f4f8;border-radius:12px;padding:8px;">
+                            <div><b>本金</b> ¥${totalAmount.toFixed(2)}</div>
+                            <div><b>当前利息</b> ¥${totalCurr.toFixed(2)}</div>
+                            <div><b>到期利息</b> ¥${totalMat.toFixed(2)}</div>
+                            <div><b>笔数</b> ${totalRows}</div>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                            <thead>${headerRow}</thead>
+                            <tbody>${rowsHTML}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // 生成图表页 HTML
+            function buildChartsHTML() {
+                if (!hasCharts) return null;
+                const uid = 'c' + Date.now() + Math.random().toString(36).substr(2, 4);
+                return `
+                    <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;height:100%;display:flex;flex-direction:column;justify-content:center;">
+                        <h2 style="text-align:center;color:#4f6ef7;">📊 存款分布图表</h2>
+                        <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()}</p>
+                        <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;flex:1;">
+                            <div style="width:45%;min-width:280px;height:250px;" id="pdfBankChart_${uid}"></div>
+                            <div style="width:45%;min-width:280px;height:250px;" id="pdfTypeChart_${uid}"></div>
+                            <div style="width:45%;min-width:280px;height:250px;" id="pdfHolderChart_${uid}"></div>
+                            ${months.length ? `<div style="width:90%;min-width:400px;height:300px;" id="pdfTrendChart_${uid}"></div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 截图函数：返回 canvas
+            async function captureElement(htmlStr) {
+                const container = document.createElement('div');
+                container.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
+                container.innerHTML = htmlStr;
+                document.body.appendChild(container);
+                await new Promise(r => requestAnimationFrame(r));
+                await new Promise(r => setTimeout(r, 100));
+
+                const canvas = await html2canvas(container, {
+                    scale: 1.5,          // 降低清晰度以节省内存
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff',
+                    allowTaint: false,
+                    width: 1100,
+                    height: container.scrollHeight,
+                });
+                document.body.removeChild(container);
+                return canvas;
+            }
+
+            // 初始化 PDF
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('landscape', 'mm', 'a4');
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 10;
+            const contentWidth = pageWidth - margin * 2;
+
+            // 处理表格页
+            for (let p = 0; p < totalTablePages; p++) {
+                const html = buildTableHTML(tablePages[p], p, totalTablePages + (hasCharts ? 1 : 0));
+                const canvas = await captureElement(html);
+                const scaleFactor = contentWidth / canvas.width;
+                const imgWidth = contentWidth;
+                const imgHeight = canvas.height * scaleFactor;
+
+                if (p === 0) {
+                    pdf.addImage(canvas, 'PNG', margin, margin, imgWidth, imgHeight);
+                } else {
+                    pdf.addPage();
+                    pdf.addImage(canvas, 'PNG', margin, margin, imgWidth, imgHeight);
+                }
+                // 释放内存
+                canvas.width = 0;
+                canvas.height = 0;
+            }
+
+            // 处理图表页（最后一页）
+            if (hasCharts) {
+                const chartsHTML = buildChartsHTML();
+                if (chartsHTML) {
+                    const container = document.createElement('div');
+                    container.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
+                    container.innerHTML = chartsHTML;
+                    document.body.appendChild(container);
+                    await new Promise(r => requestAnimationFrame(r));
+                    await new Promise(r => setTimeout(r, 200));
+
+                    // 从HTML中提取图表容器ID
+                    const uidMatch = chartsHTML.match(/pdfBankChart_([a-zA-Z0-9]+)/);
+                    if (uidMatch) {
+                        const uid = uidMatch[1];
+                        try {
+                            // 渲染图表
+                            const renderPie = (id, title, dataObj) => {
+                                const dom = container.querySelector(`#${id}`);
+                                if (!dom) return;
+                                const chart = echarts.init(dom);
+                                chart.setOption({
+                                    title: { text: title, left: 'center', textStyle: { fontSize: 12 } },
+                                    tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+                                    series: [{ type: 'pie', radius: ['40%','65%'], data: Object.entries(dataObj).map(([n,v]) => ({ name:n, value:Math.round(v*100)/100 })) }]
+                                });
+                            };
+                            renderPie(`pdfBankChart_${uid}`, '银行分布', byBank);
+                            renderPie(`pdfTypeChart_${uid}`, '类型分布', byType);
+                            renderPie(`pdfHolderChart_${uid}`, '持有人分布', byHolder);
+                            if (months.length) {
+                                const dom = container.querySelector(`#pdfTrendChart_${uid}`);
+                                if (dom) {
+                                    const chart = echarts.init(dom);
+                                    chart.setOption({
+                                        tooltip: { trigger: 'axis' },
+                                        legend: { data: ['存入金额','到期金额'] },
+                                        xAxis: { type: 'category', data: months, axisLabel: { rotate: 30 } },
+                                        yAxis: { type: 'value', name: '金额(元)' },
+                                        series: [
+                                            { name: '存入金额', type: 'bar', barWidth: '35%', data: depositData, itemStyle: { color: '#4f6ef7', borderRadius: [4,4,0,0] } },
+                                            { name: '到期金额', type: 'bar', barWidth: '35%', data: maturityData, itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] } }
+                                        ]
+                                    });
+                                }
+                            }
+                            // 等待图表渲染
+                            await new Promise(r => setTimeout(r, 500));
+                            await new Promise(r => requestAnimationFrame(r));
+                        } catch(e) { console.warn('图表渲染失败', e); }
+                    }
+
+                    // 截图图表页
+                    const canvas = await html2canvas(container, {
+                        scale: 1.5,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        width: 1100,
+                        height: container.scrollHeight,
+                    });
+                    const scaleFactor = contentWidth / canvas.width;
+                    const imgWidth = contentWidth;
+                    const imgHeight = canvas.height * scaleFactor;
+
+                    pdf.addPage();
+                    pdf.addImage(canvas, 'PNG', margin, margin, imgWidth, imgHeight);
+                    document.body.removeChild(container);
+                    canvas.width = 0;
+                    canvas.height = 0;
+                }
+            }
+
+            // 保存PDF
+            const label = currentUser === null ? '合计' : currentUser;
+            const filename = `存款报表_${label}_${new Date().toISOString().slice(0,10)}.pdf`;
+            const pdfBlob = pdf.output('blob');
+
+            if (pdfBlob.size === 0) {
+                throw new Error('生成的PDF文件为空，请重试');
+            }
+
+            if (window.cordova?.file && cordovaReady) {
+                await exportWithCordova(pdfBlob, filename, 'application/pdf');
+                showToast('✅ PDF已保存到 Download/存款管家备份');
+            } else {
+                // 浏览器下载
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(pdfBlob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+                showToast('📄 PDF已下载');
+            }
+        } catch (error) {
+            console.error('导出PDF失败:', error);
+            alert('导出PDF失败：' + error.message);
+            showToast('❌ 导出失败，请重试');
         }
     }
 
-    // ========== 统计模态框（增加导出PDF按钮） ==========
+    // ========== 统计模态框 ==========
     async function showStatsModal() {
         const data = currentFilteredDeposits;
         if (!data.length) {
