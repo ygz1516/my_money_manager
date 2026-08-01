@@ -176,7 +176,7 @@
 <script src="cordova.js"></script>
 <script>
 // ============================================================
-// 完整脚本（所有功能 + 修复版 PDF 导出）
+// 完整脚本（所有功能 + 终极修复版 PDF 导出）
 // ============================================================
 (function() {
     // ======================== 预设数据 ========================
@@ -1398,7 +1398,7 @@
     }
 
     // ============================================================
-    // ========== 终极修复版 PDF 导出（完整无缺） ==========
+    // ========== 终极修复版 PDF 导出（稳定、完整、防崩溃） ==========
     // ============================================================
     async function exportPDF() {
         try {
@@ -1445,7 +1445,7 @@
             const maturityData = months.map(m => monthMap.get(m).maturity);
             const hasCharts = Object.keys(byBank).length > 0 || months.length > 0;
 
-            // ---- 构建单页HTML（表格页） ----
+            // ---- 构建表格页HTML ----
             function buildTablePageHTML(pageData, pageNum, totalPages) {
                 const headerRow = `
                     <tr style="background:#4f6ef7;color:white;font-weight:bold;">
@@ -1468,7 +1468,7 @@
                 `).join('');
 
                 return `
-                    <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;">
+                    <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;min-height:100px;">
                         <h2 style="text-align:center;color:#4f6ef7;">💰 存款报表</h2>
                         <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()} | 第 ${pageNum+1}/${totalPages} 页</p>
                         <div style="display:flex;justify-content:space-around;margin:10px 0;background:#f0f4f8;border-radius:12px;padding:8px;">
@@ -1485,49 +1485,45 @@
                 `;
             }
 
-            // ---- 构建图表页HTML（全屏显示图表） ----
+            // ---- 构建图表页HTML（固定高度） ----
             function buildChartsPageHTML() {
                 if (!hasCharts) return null;
                 const uid = 'c' + Date.now() + Math.random().toString(36).substr(2, 4);
                 return `
-                    <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;height:100%;display:flex;flex-direction:column;justify-content:center;">
+                    <div style="font-family:'PingFang SC','Microsoft YaHei',sans-serif;color:#1a202c;padding:20px;background:white;width:1100px;height:750px;display:flex;flex-direction:column;justify-content:center;">
                         <h2 style="text-align:center;color:#4f6ef7;">📊 存款分布图表</h2>
                         <p style="text-align:center;color:#5a6c7d;">${currentUser === null ? '所有用户合计' : currentUser} | ${new Date().toLocaleString()}</p>
                         <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;flex:1;min-height:0;">
-                            <div style="width:45%;min-width:280px;height:250px;flex:1 1 auto;" id="pdfBankChart_${uid}"></div>
-                            <div style="width:45%;min-width:280px;height:250px;flex:1 1 auto;" id="pdfTypeChart_${uid}"></div>
-                            <div style="width:45%;min-width:280px;height:250px;flex:1 1 auto;" id="pdfHolderChart_${uid}"></div>
-                            ${months.length ? `<div style="width:90%;min-width:400px;height:300px;flex:1 1 auto;" id="pdfTrendChart_${uid}"></div>` : ''}
+                            <div style="width:45%;min-width:280px;height:220px;flex:1 1 220px;" id="pdfBankChart_${uid}"></div>
+                            <div style="width:45%;min-width:280px;height:220px;flex:1 1 220px;" id="pdfTypeChart_${uid}"></div>
+                            <div style="width:45%;min-width:280px;height:220px;flex:1 1 220px;" id="pdfHolderChart_${uid}"></div>
+                            ${months.length ? `<div style="width:90%;min-width:400px;height:250px;flex:1 1 250px;" id="pdfTrendChart_${uid}"></div>` : ''}
                         </div>
                     </div>
                 `;
             }
 
             // ---- 通用截图函数（可靠） ----
-            async function captureElement(htmlStr, extraWait = 0) {
+            async function captureElement(htmlStr, fixedHeight = null) {
                 const container = document.createElement('div');
                 container.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
                 container.innerHTML = htmlStr;
                 document.body.appendChild(container);
 
-                // 等待布局
                 await new Promise(r => requestAnimationFrame(r));
-                await new Promise(r => setTimeout(r, 100 + extraWait));
+                await new Promise(r => setTimeout(r, 150));
 
-                // 强制计算高度
-                const height = container.scrollHeight;
                 const width = 1100;
+                const height = fixedHeight || container.scrollHeight;
 
                 const canvas = await html2canvas(container, {
-                    scale: 2,
+                    scale: 1.2,          // 降低清晰度以节省内存
                     useCORS: true,
                     logging: false,
                     backgroundColor: '#ffffff',
                     width: width,
                     height: height,
-                    onclone: (doc) => {
-                        // 可以在这里额外处理，但没必要
-                    }
+                    onclone: (doc) => { /* 无需操作 */ }
                 });
 
                 document.body.removeChild(container);
@@ -1568,8 +1564,7 @@
                             chart.resize();
                         }
                     }
-                    // 等待渲染完成
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => setTimeout(r, 400));
                     await new Promise(r => requestAnimationFrame(r));
                 } catch (e) {
                     console.warn('图表渲染失败', e);
@@ -1584,7 +1579,7 @@
             const margin = 10;
             const contentWidth = pageWidth - margin * 2;
 
-            // 分页数据（每页最多 20 行，可调整）
+            // 分页数据（每页最多 20 行）
             const ROWS_PER_PAGE = 20;
             const tablePages = [];
             for (let i = 0; i < data.length; i += ROWS_PER_PAGE) {
@@ -1596,7 +1591,7 @@
             // 处理表格页
             for (let p = 0; p < totalTablePages; p++) {
                 const html = buildTablePageHTML(tablePages[p], p, totalPages);
-                const { canvas, width, height } = await captureElement(html, 0);
+                const { canvas, width, height } = await captureElement(html, null);
                 const scaleFactor = contentWidth / width;
                 const imgWidth = contentWidth;
                 const imgHeight = height * scaleFactor;
@@ -1615,33 +1610,31 @@
             if (hasCharts) {
                 const chartsHTML = buildChartsPageHTML();
                 if (chartsHTML) {
-                    // 先创建容器并附加，以便渲染图表
+                    // 创建容器并附加
                     const container = document.createElement('div');
                     container.style.cssText = 'position:absolute;left:-9999px;top:0;background:white;';
                     container.innerHTML = chartsHTML;
                     document.body.appendChild(container);
 
-                    // 等待布局
                     await new Promise(r => requestAnimationFrame(r));
                     await new Promise(r => setTimeout(r, 200));
 
-                    // 获取 uid
                     const uidMatch = chartsHTML.match(/pdfBankChart_([a-zA-Z0-9]+)/);
                     if (uidMatch) {
                         const uid = uidMatch[1];
                         await renderChartsInContainer(container, uid);
                     }
 
-                    // 截图
-                    const height = container.scrollHeight;
+                    // 截图（使用固定高度 750px）
                     const width = 1100;
+                    const height = 750;
                     const canvas = await html2canvas(container, {
-                        scale: 2,
+                        scale: 1.2,
                         useCORS: true,
                         logging: false,
                         backgroundColor: '#ffffff',
                         width: width,
-                        height: height
+                        height: height,
                     });
 
                     const scaleFactor = contentWidth / width;
