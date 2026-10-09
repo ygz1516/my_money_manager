@@ -1,10 +1,9 @@
 name: Build Deposit Manager APK
 
 on:
-  workflow_dispatch:        # 手动触发（在 Actions 页面点击按钮）
   push:
-    paths:
-      - 'index.html'        # 当 index.html 更新时自动构建
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,9 +20,9 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4   # 修复1：升级到 v4，避开已删除的 tools 包
+        uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'             # 修复2：明确只安装 platform-tools
+          packages: 'platform-tools'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,12 +41,11 @@ jobs:
           # 2. 覆盖默认的 index.html
           cp ../index.html www/index.html
           
-          # 3. 复制图标并修改 config.xml（加入图标）
+          # 3. 复制图标并替换默认图标路径
           cp ../icon.png icon.png
-          # 将 Cordova 默认的图标路径替换为你上传的 icon.png
           sed -i 's|res/icon.png|icon.png|g' config.xml
           
-          # 4. 添加必需插件
+          # 4. 添加必需插件（网页版需要的文件操作、权限、打开文件夹）
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-file-opener2
@@ -55,10 +53,10 @@ jobs:
           # 5. 添加 Android 平台
           cordova platform add android
           
-          # 6. 构建 Debug APK（无需签名，可直接安装）
+          # 6. 构建 Debug APK
           cordova build android
           
-          # 7. 创建输出目录并复制 APK（加上时间戳避免覆盖）
+          # 7. 创建输出目录并复制 APK（加时间戳防覆盖）
           mkdir -p ../output
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
 
