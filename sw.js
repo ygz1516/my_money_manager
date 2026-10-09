@@ -1,4 +1,4 @@
-const CACHE = 'deposit-v2';
+const CACHE = 'deposit-v3';
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
