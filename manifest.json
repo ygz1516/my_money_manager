@@ -1,0 +1,16 @@
+{
+  "name": "存款管家 Pro",
+  "short_name": "存款管家",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#eef2f9",
+  "theme_color": "#4f6ef7",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
