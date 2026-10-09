@@ -636,10 +636,10 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
       <button id="backupJsonBtn" class="secondary small">💾 JSON</button>
       <button id="openBackupFolderBtn" class="purple small">📂 备份夹</button>
       <label id="restoreLabel" class="btn-like secondary small" style="background:linear-gradient(135deg,#64748b,#475569);cursor:pointer;">📂 恢复CSV
-        <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
+        <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="position:absolute;left:-9999px;opacity:0;width:1px;height:1px;">
       </label>
       <label id="restoreJsonLabel" class="btn-like secondary small" style="background:linear-gradient(135deg,#64748b,#475569);cursor:pointer;">📂 恢复JSON
-        <input type="file" id="restoreJsonInput" accept=".json" style="display:none;">
+        <input type="file" id="restoreJsonInput" accept=".json" style="position:absolute;left:-9999px;opacity:0;width:1px;height:1px;">
       </label>
       <button id="pdfBtn" class="small" style="background:linear-gradient(135deg,#f97316,#ea580c);">📄 导出PDF</button>
       <div class="sep"></div>
@@ -2975,7 +2975,21 @@ function bindEvents(){
     }
     fileInput.value = '';
   });
-
+   const restoreLabel = document.getElementById('restoreLabel');
+     if (restoreLabel) {
+       restoreLabel.addEventListener('click', (e) => {
+         e.preventDefault();
+         fileInput.click();
+       });
+     }
+     const restoreJsonLabel = document.getElementById('restoreJsonLabel');
+     const jsonInput = document.getElementById('restoreJsonInput');
+     if (restoreJsonLabel && jsonInput) {
+       restoreJsonLabel.addEventListener('click', (e) => {
+         e.preventDefault();
+         jsonInput.click();
+       });
+     }
   // JSON 恢复
   const jsonInput = document.getElementById('restoreJsonInput');
   jsonInput.addEventListener('change',async e=>{
