@@ -2975,23 +2975,25 @@ function bindEvents(){
     }
     fileInput.value = '';
   });
-   const restoreLabel = document.getElementById('restoreLabel');
-     if (restoreLabel) {
-       restoreLabel.addEventListener('click', (e) => {
-         e.preventDefault();
-         fileInput.click();
-       });
-     }
-     const restoreJsonLabel = document.getElementById('restoreJsonLabel');
-     const jsonInput = document.getElementById('restoreJsonInput');
-     if (restoreJsonLabel && jsonInput) {
-       restoreJsonLabel.addEventListener('click', (e) => {
-         e.preventDefault();
-         jsonInput.click();
-       });
-     }
+
+  const restoreLabel = document.getElementById('restoreLabel');
+  if (restoreLabel) {
+    restoreLabel.addEventListener('click', (e) => {
+      e.preventDefault();
+      fileInput.click();
+    });
+  }
+
+  const jsonInput = document.getElementById('restoreJsonInput'); // 只在这里声明一次！
+  const restoreJsonLabel = document.getElementById('restoreJsonLabel');
+  if (restoreJsonLabel && jsonInput) {
+    restoreJsonLabel.addEventListener('click', (e) => {
+      e.preventDefault();
+      jsonInput.click();
+    });
+  }
+
   // JSON 恢复
-  const jsonInput = document.getElementById('restoreJsonInput');
   jsonInput.addEventListener('change',async e=>{
     if(!e.target.files.length) return;
     showLoading(true);
