@@ -123,9 +123,6 @@ body::before{
 ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:8px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--primary);}
 
-/* ============================================================
-   卡片
-============================================================ */
 .card{
   background:var(--card-bg);
   backdrop-filter:var(--glass-blur);
@@ -149,9 +146,6 @@ body::before{
 }
 .card:hover{box-shadow:var(--shadow-lg);}
 
-/* ============================================================
-   头部
-============================================================ */
 .header{
   display:flex;justify-content:space-between;align-items:center;
   flex-wrap:wrap;gap:10px;margin-bottom:14px;
@@ -166,9 +160,6 @@ body::before{
 .app-title .emoji{-webkit-text-fill-color:initial;color:initial;font-size:1.5rem;}
 .header-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
 
-/* ============================================================
-   按钮
-============================================================ */
 button,.btn-like{
   display:inline-flex;align-items:center;justify-content:center;gap:5px;
   background:linear-gradient(135deg,var(--primary),var(--primary-hover));
@@ -194,9 +185,6 @@ button.icon-btn{padding:8px 10px;font-size:0.95rem;border-radius:50%;min-width:3
 button:disabled{opacity:0.45;cursor:not-allowed;filter:grayscale(0.4);box-shadow:none;}
 button:disabled:hover{filter:grayscale(0.4);box-shadow:none;}
 
-/* ============================================================
-   表单
-============================================================ */
 input,select,textarea{
   width:100%;padding:10px 13px;margin:5px 0 10px;
   border:1.6px solid var(--border);border-radius:var(--radius-xs);
@@ -218,9 +206,6 @@ select{cursor:pointer;appearance:none;-webkit-appearance:none;
 label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
   letter-spacing:0.03em;display:block;margin-top:4px;}
 
-/* ============================================================
-   状态条
-============================================================ */
 .status-bar{
   background:linear-gradient(135deg,var(--card-bg-2),var(--card-solid));
   padding:10px 14px;border-radius:22px;font-size:0.78rem;margin-bottom:12px;
@@ -238,9 +223,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 .status-badge.danger{background:var(--danger-soft);color:var(--danger);}
 [data-theme="dark"] .status-badge.warning{color:var(--warning);}
 
-/* ============================================================
-   汇总卡片
-============================================================ */
 .summary-cards{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));
   gap:9px;margin-bottom:14px;
@@ -279,9 +261,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 .summary-card.daily::before{background:linear-gradient(180deg,#f97316,#fb923c);}
 .summary-card.daily .sc-value{background:linear-gradient(120deg,#ea580c,#f97316);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
 
-/* ============================================================
-   筛选面板
-============================================================ */
 .filter-toggle-btn{
   display:none;background:var(--card-bg-2);color:var(--text-secondary);
   border:1.6px solid var(--border);padding:9px 14px;border-radius:20px;
@@ -308,9 +287,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 .filter-group .dup-btn-wrap{display:flex;gap:5px;align-items:center;margin-top:2px;}
 .filter-group .dup-btn-wrap button{margin:0;}
 
-/* ============================================================
-   排序行
-============================================================ */
 .sort-row{
   display:flex;gap:8px;align-items:center;font-size:0.76rem;
   margin-bottom:12px;flex-wrap:wrap;
@@ -320,9 +296,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
   font-size:0.78rem;border-radius:16px;
 }
 
-/* ============================================================
-   存款卡片列表
-============================================================ */
 .deposit-list-container{display:flex;flex-direction:column;gap:10px;}
 .deposit-item{
   background:var(--card-bg);
@@ -403,7 +376,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 .countdown-badge.normal{background:var(--primary-soft);color:var(--primary);}
 .countdown-badge.far{background:var(--success-soft);color:var(--success);}
 
-/* 本息小面板 */
 .interest-panel{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
   gap:6px;margin-top:8px;
@@ -423,14 +395,10 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 [data-theme="dark"] .ip-cell.mat .ip-value{color:#f472b6;}
 [data-theme="dark"] .ip-cell.mattotal .ip-value{color:#a78bfa;}
 
-/* 空状态 */
 .empty-state{text-align:center;padding:46px 20px !important;}
 .empty-state .empty-icon{font-size:3.4rem;line-height:1;margin-bottom:10px;}
 .empty-state p{color:var(--text-secondary);font-size:0.9rem;}
 
-/* ============================================================
-   模态框
-============================================================ */
 .modal{
   position:fixed;top:0;left:0;width:100%;height:100%;
   background:rgba(15,23,42,0.55);
@@ -461,9 +429,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
 
-/* ============================================================
-   Toast
-============================================================ */
 .toast-msg{
   position:fixed;bottom:26px;left:16px;right:16px;
   background:linear-gradient(135deg,rgba(15,23,42,0.96),rgba(30,41,59,0.96));
@@ -478,18 +443,12 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 }
 .toast-msg.hidden{opacity:0;transform:translateY(14px);}
 
-/* ============================================================
-   图表卡片
-============================================================ */
 .chart-card{
   background:var(--card-solid);border-radius:14px;padding:10px;
   margin-bottom:10px;border:1px solid var(--border);
 }
 .chart-hint{font-size:10px;text-align:center;color:var(--text-muted);margin-top:4px;}
 
-/* ============================================================
-   批量操作条
-============================================================ */
 .batch-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .batch-bar label{
   display:flex;align-items:center;gap:5px;font-size:0.78rem;
@@ -497,15 +456,9 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 }
 .batch-bar input[type="checkbox"]{width:18px;height:18px;accent-color:var(--primary);margin:0;}
 
-/* ============================================================
-   工具行
-============================================================ */
 .tool-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;}
 .tool-row .sep{width:1px;height:22px;background:var(--border);margin:0 3px;}
 
-/* ============================================================
-   加载指示
-============================================================ */
 .loading-overlay{
   position:fixed;inset:0;background:rgba(15,23,42,0.5);
   display:flex;align-items:center;justify-content:center;z-index:3000;
@@ -517,9 +470,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 }
 @keyframes spin{to{transform:rotate(360deg);}}
 
-/* ============================================================
-   锁屏界面
-============================================================ */
 .lock-screen{
   position:fixed;inset:0;
   background:
@@ -604,7 +554,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
   display:flex;align-items:center;justify-content:center;gap:5px;
 }
 
-/* 安全开关行 */
 .sec-row{
   display:flex;justify-content:space-between;align-items:center;
   padding:12px 4px;border-bottom:1px solid var(--border);gap:12px;
@@ -630,9 +579,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 .switch input:checked + .slider:before{transform:translateX(20px);}
 .switch input:disabled + .slider{opacity:0.4;cursor:not-allowed;}
 
-/* ============================================================
-   响应式
-============================================================ */
 @media (max-width:640px){
   body{padding:8px;padding-bottom:100px;}
   .card{padding:13px;border-radius:15px;}
@@ -652,7 +598,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
   .summary-cards{grid-template-columns:1fr 1fr;}
 }
 
-/* 打印优化（隐藏不必要） */
 @media print{
   body{background:#fff;padding:0;}
   .header-actions,.tool-row,.filter-panel,.batch-bar,button{display:none !important;}
@@ -665,7 +610,6 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 <body>
 <div id="app" class="app-container">
 
-  <!-- ==================== 主卡片 ==================== -->
   <div class="card">
     <div class="header">
       <div class="app-title"><span class="emoji">💰</span>存款管家 · 旗舰版 Pro</div>
@@ -682,14 +626,12 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
       </div>
     </div>
 
-    <!-- 状态条 -->
     <div class="status-bar" id="statusBar">
       <span id="statsText" style="font-weight:600;"></span>
       <span id="duplicateWarning"></span>
       <span id="selectedStats"></span>
     </div>
 
-    <!-- 汇总卡片 -->
     <div class="summary-cards" id="summaryCards">
       <div class="summary-card principal"><div class="sc-value" id="scPrincipal">¥0</div><div class="sc-label">💰 本金总额</div></div>
       <div class="summary-card curint"><div class="sc-value" id="scCurrInterest">¥0</div><div class="sc-label">💹 当前利息</div></div>
@@ -764,35 +706,29 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
       <span style="margin-left:auto;color:var(--text-muted);" id="sortHint"></span>
     </div>
 
-    <div class="tool-row">
-      <button id="addDepositBtn">➕ 新增存款</button>
-      <button id="backupCsvBtn" class="secondary small">💾 CSV</button>
-      <button id="backupJsonBtn" class="secondary small">💾 JSON</button>
-      <button id="openBackupFolderBtn" class="purple small">📂 备份夹</button>
-      <label id="restoreLabel" class="btn-like secondary small" style="background:linear-gradient(135deg,#64748b,#475569);cursor:pointer;">📂 恢复CSV
-        <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
-      </label>
-      <label id="restoreJsonLabel" class="btn-like secondary small" style="background:linear-gradient(135deg,#64748b,#475569);cursor:pointer;">📂 恢复JSON
-        <input type="file" id="restoreJsonInput" accept=".json" style="display:none;">
-      </label>
-      <button id="pdfBtn" class="small" style="background:linear-gradient(135deg,#f97316,#ea580c);">📄 导出PDF</button>
-      <div class="sep"></div>
-      <div class="batch-bar">
-        <label><input type="checkbox" id="selectAllCheckbox"> 全选</label>
-        <button id="batchDeleteBtn" class="small danger">🗑️ 删除选中</button>
-      </div>
+   <div class="tool-row">
+    <button id="addDepositBtn">➕ 新增存款</button>
+    <button id="backupCsvBtn" class="secondary small">💾 CSV</button>
+    <button id="backupJsonBtn" class="secondary small">💾 JSON</button>
+    <button id="openBackupFolderBtn" class="purple small">📂 备份夹</button>
+    <button id="restoreFromBackupBtn" class="purple small">📂 从备份夹恢复</button>
+    <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
+    <input type="file" id="restoreJsonInput" accept=".json" style="display:none;">
+    <button id="pdfBtn" class="small" style="background:linear-gradient(135deg,#f97316,#ea580c);">📄 导出PDF</button>
+    <div class="sep"></div>
+    <div class="batch-bar">
+      <label><input type="checkbox" id="selectAllCheckbox"> 全选</label>
+      <button id="batchDeleteBtn" class="small danger">🗑️ 删除选中</button>
     </div>
   </div>
 
-  <!-- ==================== 存款列表 ==================== -->
   <div id="depositListContainer" class="deposit-list-container"></div>
 </div>
 
-<script src="cordova.js"></script>
 <script>
 /* ================================================================
    存款管家 · 旗舰版 Pro
-   全功能单文件应用（含密码 + 指纹识别 · 兼容修复版）
+   兼容 HBuilderX(5+App) 与 Cordova
 ================================================================ */
 (function(){
 'use strict';
@@ -819,9 +755,29 @@ const SEC_PWD_SALT_KEY = 'app_password_salt';
 const SEC_BIO_ENABLED_KEY = 'biometric_enabled';
 const SEC_AUTO_LOCK_KEY = 'auto_lock_enabled';
 const SEC_FAIL_COUNT_KEY = 'lock_fail_count';
-const SEC_LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 后台 5 分钟后自动锁定
+const SEC_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 
 let lastHiddenTime = 0;
+
+/* ================================================================
+   环境检测：HBuilderX(5+App) vs Cordova vs 浏览器
+================================================================ */
+function isPlusApp(){
+  return typeof window.plus !== 'undefined' && window.plus && window.plus.fingerprint;
+}
+function isPlusReady(){
+  return typeof window.plus !== 'undefined' && window.plus && window.plus.io;
+}
+function waitForPlusReady(timeout = 2000){
+  if(window.plus) return Promise.resolve(true);
+  return new Promise(resolve => {
+    let done = false;
+    const timer = setTimeout(()=>{ if(!done){ done = true; resolve(false); } }, timeout);
+    document.addEventListener('plusready', ()=>{
+      if(!done){ done = true; clearTimeout(timer); resolve(true); }
+    }, { once:true });
+  });
+}
 
 /* ================================================================
    一、密码哈希与验证
@@ -895,20 +851,10 @@ function removeAppPassword(){
 }
 
 /* ================================================================
-   二、指纹 / 生物识别（Cordova 插件 · 兼容多路径）
+   二、生物识别（支持 5+App、Cordova）
 ================================================================ */
-function waitForDeviceReady(timeout = 1800){
-  if(window.cordova) return Promise.resolve(true);
-  return new Promise(resolve => {
-    let done = false;
-    const timer = setTimeout(()=>{ if(!done){ done = true; resolve(false); } }, timeout);
-    document.addEventListener('deviceready', ()=>{
-      if(!done){ done = true; clearTimeout(timer); resolve(true); }
-    }, { once:true });
-  });
-}
-
 function getFingerprintPlugin(){
+  // Cordova 路径
   if(window.Fingerprint && typeof window.Fingerprint.isAvailable === 'function'){
     return window.Fingerprint;
   }
@@ -924,14 +870,42 @@ function getFingerprintPlugin(){
 }
 
 function isBiometricPluginAvailable(){
+  if(isPlusApp()) return true;
   return !!getFingerprintPlugin();
 }
 
 function checkBiometricSupport(){
   return new Promise(resolve => {
+    // --- 优先 5+App ---
+    if(isPlusApp()){
+      try{
+        const supported = window.plus.fingerprint.isSupport();
+        if(!supported){
+          resolve({available:false, reason:'设备硬件不支持指纹识别', biometryType:''});
+          return;
+        }
+        window.plus.fingerprint.isKeyguardSecure((secure) => {
+          if(!secure){
+            resolve({available:false, reason:'请先在系统设置中开启锁屏密码', biometryType:'fingerprint'});
+            return;
+          }
+          window.plus.fingerprint.isEnrolledFingerprints((enrolled) => {
+            if(!enrolled){
+              resolve({available:false, reason:'请先在系统设置中录入指纹', biometryType:'fingerprint'});
+              return;
+            }
+            resolve({available:true, reason:'', biometryType:'fingerprint'});
+          }, () => resolve({available:false, reason:'检测指纹录入状态失败', biometryType:'fingerprint'}));
+        }, () => resolve({available:false, reason:'检测锁屏状态失败', biometryType:'fingerprint'}));
+        return;
+      }catch(e){
+        // 落到 Cordova
+      }
+    }
+    // --- Cordova ---
     const plugin = getFingerprintPlugin();
     if(!plugin){
-      resolve({ available:false, reason:'生物识别插件未加载（请检查打包配置）', biometryType:'' });
+      resolve({ available:false, reason:'设备不支持生物识别', biometryType:'' });
       return;
     }
     try{
@@ -959,6 +933,22 @@ function checkBiometricSupport(){
 
 function authenticateWithBiometric(){
   return new Promise((resolve, reject) => {
+    // --- 优先 5+App ---
+    if(isPlusApp()){
+      try{
+        window.plus.fingerprint.authenticate(
+          () => resolve(true),
+          (err) => {
+            const msg = (err && err.message) || '指纹认证失败';
+            reject(new Error(msg));
+          }
+        );
+        return;
+      }catch(e){
+        // 落到 Cordova
+      }
+    }
+    // --- Cordova ---
     const plugin = getFingerprintPlugin();
     if(!plugin){
       reject(new Error('设备不支持生物识别'));
@@ -1013,7 +1003,22 @@ async function showLockScreen(){
 
   if(!hasPwd && !bioEnabled) return;
 
-  await waitForDeviceReady(1500);
+  await waitForPlusReady(1500);
+
+  // 新增：等待指纹模块就绪（最多重试 5 次，间隔 200ms）
+  if (bioEnabled && isPlusApp() && window.plus && window.plus.fingerprint) {
+    let retries = 0;
+    while (retries < 5) {
+      try {
+        if (typeof window.plus.fingerprint.isSupport === 'function') {
+          break; // 模块已就绪
+        }
+      } catch (e) {}
+      await new Promise(r => setTimeout(r, 200));
+      retries++;
+    }
+  }
+
   const bioCheck = bioEnabled ? await checkBiometricSupport() : { available:false };
   const bioAvailable = bioCheck.available;
 
@@ -1105,9 +1110,7 @@ async function showLockScreen(){
       };
     }
 
-    if(submitBtn){
-      submitBtn.onclick = tryPassword;
-    }
+    if(submitBtn) submitBtn.onclick = tryPassword;
     if(pwdInput){
       pwdInput.addEventListener('keydown', e=>{
         if(e.key === 'Enter') tryPassword();
@@ -1142,15 +1145,7 @@ async function showLockScreen(){
    四、安全设置弹窗
 ================================================================ */
 async function showSecuritySettings(){
-  if(!window.cordova){
-    await new Promise(r => {
-      let done = false;
-      const t = setTimeout(()=>{ if(!done){ done = true; r(); } }, 2000);
-      document.addEventListener('deviceready', ()=>{
-        if(!done){ done = true; clearTimeout(t); r(); }
-      }, { once:true });
-    });
-  }
+  await waitForPlusReady(2000);
 
   const hasPwd = hasAppPassword();
   const bioEnabled = localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
@@ -1162,7 +1157,7 @@ async function showSecuritySettings(){
 
   let bioDesc;
   if(!pluginReady){
-    bioDesc = '⚠️ 未检测到生物识别插件，请检查打包配置';
+    bioDesc = '⚠️ 设备不支持生物识别';
   }else if(bioAvailable){
     bioDesc = '使用系统生物识别快速解锁';
   }else{
@@ -1306,7 +1301,6 @@ async function showSecuritySettings(){
   });
 }
 
-/* ---------------- 设置 / 修改密码弹窗 ---------------- */
 function showSetPasswordModal(isChange, onDone){
   const modalDiv = document.createElement('div');
   modalDiv.className = 'modal';
@@ -1645,7 +1639,7 @@ function daysBetween(a,b){
   return Math.round((b - a) / (1000 * 3600 * 24));
 }
 
-/* ======================== 利息计算（支持利率历史） ======================== */
+/* ======================== 利息计算 ======================== */
 async function calculateInterest(deposit,asOfDate=null){
   const { startDate,maturityDate,amount,rate,interestType,id } = deposit;
   if(!startDate || amount <= 0 || rate == null || isNaN(rate)) return 0;
@@ -1740,7 +1734,7 @@ function getMaturityStatus(dep){
   return 'safe';
 }
 
-/* ======================== 备份与恢复 ======================== */
+/* ======================== Toast / Loading ======================== */
 function showToast(msg,duration=3800){
   let toast = document.querySelector('.toast-msg');
   if(!toast){
@@ -1769,6 +1763,174 @@ function showLoading(show){
   }
 }
 
+/* ================================================================
+   六、文件导出（优先 5+App → Cordova → 浏览器）
+================================================================ */
+function fallbackDownload(content,filename,mime='text/csv'){
+  const blob = new Blob([content],{type:mime});
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  showToast(`📥 已触发下载：${filename}`,4500);
+}
+
+/** 5+App 文件导出 */
+function exportWithPlus(content, filename, mime){
+  return new Promise(resolve=>{
+    if(!isPlusReady()){
+      fallbackDownload(content, filename, mime);
+      resolve(false);
+      return;
+    }
+    try{
+      // 使用 _downloads/ 内置目录（Android 上是 /storage/emulated/0/Android/data/包名/downloads/）
+      const subDir = '存款管家备份';
+      window.plus.io.resolveLocalFileSystemURL('_downloads/', (root) => {
+        root.getDirectory(subDir, {create:true, exclusive:false}, (dirEntry) => {
+          dirEntry.getFile(filename, {create:true, exclusive:false}, (fileEntry) => {
+            fileEntry.createWriter((writer) => {
+              writer.onwrite = () => {
+                const realPath = window.plus.io.convertLocalFileSystemURL(fileEntry.fullPath);
+                showToast(`✅ 已保存到：${realPath}`, 5500);
+                resolve(true);
+              };
+              writer.onerror = (e) => {
+                console.error('5+App 写入失败:', e);
+                fallbackDownload(content, filename, mime);
+                resolve(false);
+              };
+              const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime});
+              writer.write(blob);
+            }, (err) => {
+              console.error('createWriter 失败:', err);
+              fallbackDownload(content, filename, mime);
+              resolve(false);
+            });
+          }, (err) => {
+            console.error('getFile 失败:', err);
+            fallbackDownload(content, filename, mime);
+            resolve(false);
+          });
+        }, (err) => {
+          console.error('getDirectory 失败:', err);
+          fallbackDownload(content, filename, mime);
+          resolve(false);
+        });
+      }, (err) => {
+        console.error('resolveLocalFileSystemURL 失败:', err);
+        fallbackDownload(content, filename, mime);
+        resolve(false);
+      });
+    }catch(e){
+      console.error('exportWithPlus 异常:', e);
+      fallbackDownload(content, filename, mime);
+      resolve(false);
+    }
+  });
+}
+
+/** Cordova 文件导出 */
+function writeFileToDir(dirEntry,filename,content,mime,callback){
+  dirEntry.getFile(filename,{create:true,exclusive:false},(fileEntry)=>{
+    fileEntry.createWriter((writer)=>{
+      writer.onwriteend = ()=>{
+        showToast(`✅ 已保存到：${fileEntry.nativeURL || fileEntry.toURL()}`,5500);
+        callback(true);
+      };
+      writer.onerror = ()=>{ fallbackDownload(content,filename,mime); callback(false); };
+      const blob = (content instanceof Blob) ? content : new Blob([content],{type:mime});
+      writer.write(blob);
+    },()=>{ fallbackDownload(content,filename,mime); callback(false); });
+  },()=>{ fallbackDownload(content,filename,mime); callback(false); });
+}
+
+async function requestStoragePermission(){
+  if(!window.cordova || !window.cordova.plugins || !window.cordova.plugins.permissions) return true;
+  const permissions = window.cordova.plugins.permissions;
+  return new Promise(resolve=>{
+    permissions.hasPermission(permissions.WRITE_EXTERNAL_STORAGE,(status)=>{
+      if(status.hasPermission) resolve(true);
+      else permissions.requestPermission(
+        permissions.WRITE_EXTERNAL_STORAGE,
+        (result)=>resolve(result.hasPermission),
+        ()=>resolve(false)
+      );
+    },()=>resolve(false));
+  });
+}
+
+async function exportWithCordova(content,filename,mime='text/csv'){
+  if(!window.cordova || !window.cordova.file){
+    fallbackDownload(content,filename,mime);
+    return false;
+  }
+  await requestStoragePermission();
+  const externalRoot = window.cordova.file.externalRootDirectory;
+  const backupDir = externalRoot + 'Download/存款管家备份/';
+  const resolveLocalFileSystemURL = window.resolveLocalFileSystemURL;
+  return new Promise(resolve=>{
+    resolveLocalFileSystemURL(backupDir,(dirEntry)=>{
+      writeFileToDir(dirEntry,filename,content,mime,resolve);
+    },()=>{
+      resolveLocalFileSystemURL(externalRoot + 'Download/',(downloadDir)=>{
+        downloadDir.getDirectory('存款管家备份',{create:true},(newDir)=>{
+          writeFileToDir(newDir,filename,content,mime,resolve);
+        },()=>{ fallbackDownload(content,filename,mime); resolve(false); });
+      },()=>{ fallbackDownload(content,filename,mime); resolve(false); });
+    });
+  });
+}
+
+/** 统一入口：自动选择方案 */
+async function exportFile(content, filename, mime='text/csv'){
+  await waitForPlusReady(1500);
+  if(isPlusReady()){
+    return await exportWithPlus(content, filename, mime);
+  }
+  if(window.cordova && window.cordova.file){
+    return await exportWithCordova(content, filename, mime);
+  }
+  fallbackDownload(content, filename, mime);
+  return false;
+}
+
+/** 打开备份文件夹（仅 5+App 支持跳转文件管理） */
+function openBackupFolder(){
+  if(isPlusReady()){
+    try{
+      const path = '_downloads/存款管家备份/';
+      const realPath = window.plus.io.convertLocalFileSystemURL(path);
+      // 尝试用系统文件管理器打开
+      window.plus.runtime.openFile(realPath, {}, (err)=>{
+        showToast(`请手动前往：${realPath}`, 5500);
+      });
+    }catch(e){
+      showToast('请打开文件管理 → Android/data/包名/downloads/存款管家备份/', 5500);
+    }
+    return;
+  }
+  if(window.cordova && window.cordova.file){
+    const backupDir = window.cordova.file.externalRootDirectory + 'Download/存款管家备份/';
+    if(window.plugins && window.plugins.fileOpener2){
+      window.plugins.fileOpener2.open(
+        backupDir,
+        'application/vnd.android.directory',
+        {error:()=>showToast(`请手动前往：${backupDir}`,4500)}
+      );
+      return;
+    }
+    showToast('请打开文件管理 → Download → 存款管家备份', 5500);
+    return;
+  }
+  showToast('当前环境请手动到文件管理中查找下载的文件', 4500);
+}
+
+/* ======================== CSV / JSON ======================== */
 function escapeCSV(cell){
   if(cell === undefined || cell === null) return '';
   const str = String(cell);
@@ -1810,88 +1972,6 @@ function generateCSVBlob(user,deposits){
   return '\uFEFF' + csvLines.map(row=>row.map(escapeCSV).join(',')).join('\n');
 }
 
-function fallbackDownload(content,filename,mime='text/csv'){
-  const blob = new Blob([content],{type:mime});
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(()=>URL.revokeObjectURL(url),1500);
-  showToast(`📥 已触发下载：${filename}`,4500);
-}
-
-async function requestStoragePermission(){
-  if(!window.cordova || !window.cordova.plugins || !window.cordova.plugins.permissions) return true;
-  const permissions = window.cordova.plugins.permissions;
-  return new Promise(resolve=>{
-    permissions.hasPermission(permissions.WRITE_EXTERNAL_STORAGE,(status)=>{
-      if(status.hasPermission) resolve(true);
-      else permissions.requestPermission(
-        permissions.WRITE_EXTERNAL_STORAGE,
-        (result)=>resolve(result.hasPermission),
-        ()=>resolve(false)
-      );
-    },()=>resolve(false));
-  });
-}
-
-async function exportWithCordova(content,filename,mime='text/csv'){
-  if(!window.cordova || !window.cordova.file){
-    fallbackDownload(content,filename,mime);
-    return false;
-  }
-  await requestStoragePermission();
-  const externalRoot = window.cordova.file.externalRootDirectory;
-  const backupDir = externalRoot + 'Download/存款管家备份/';
-  const resolveLocalFileSystemURL = window.resolveLocalFileSystemURL;
-  return new Promise(resolve=>{
-    resolveLocalFileSystemURL(backupDir,(dirEntry)=>{
-      writeFileToDir(dirEntry,filename,content,mime,resolve);
-    },()=>{
-      resolveLocalFileSystemURL(externalRoot + 'Download/',(downloadDir)=>{
-        downloadDir.getDirectory('存款管家备份',{create:true},(newDir)=>{
-          writeFileToDir(newDir,filename,content,mime,resolve);
-        },()=>{ fallbackDownload(content,filename,mime); resolve(false); });
-      },()=>{ fallbackDownload(content,filename,mime); resolve(false); });
-    });
-  });
-}
-
-function writeFileToDir(dirEntry,filename,content,mime,callback){
-  dirEntry.getFile(filename,{create:true,exclusive:false},(fileEntry)=>{
-    fileEntry.createWriter((writer)=>{
-      writer.onwriteend = ()=>{
-        showToast(`✅ 已保存到：${fileEntry.nativeURL || fileEntry.toURL()}`,5500);
-        callback(true);
-      };
-      writer.onerror = ()=>{ fallbackDownload(content,filename,mime); callback(false); };
-      const blob = (content instanceof Blob) ? content : new Blob([content],{type:mime});
-      writer.write(blob);
-    },()=>{ fallbackDownload(content,filename,mime); callback(false); });
-  },()=>{ fallbackDownload(content,filename,mime); callback(false); });
-}
-
-function openBackupFolder(){
-  if(!window.cordova || !window.cordova.file){
-    showToast('当前非 Cordova 环境，请手动前往「文件管理」→ Download/存款管家备份',4500);
-    return;
-  }
-  const backupDir = window.cordova.file.externalRootDirectory + 'Download/存款管家备份/';
-  if(window.plugins && window.plugins.fileOpener2){
-    window.plugins.fileOpener2.open(
-      backupDir,
-      'application/vnd.android.directory',
-      {error:()=>showToast(`请手动前往：${backupDir}`,4500)}
-    );
-  }else{
-    showToast('请打开手机「文件管理」→ 内部存储 → Download → 存款管家备份 文件夹。',5500);
-  }
-}
-
-/* ---------------- CSV 导入 ---------------- */
 async function importFromCSV(file){
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
@@ -2008,7 +2088,6 @@ async function importFromCSV(file){
   });
 }
 
-/* ---------------- JSON 备份/恢复 ---------------- */
 async function backupJSON(){
   const users = await getUsers();
   const allDeposits = await getAllDeposits();
@@ -2027,11 +2106,7 @@ async function backupJSON(){
   const json = JSON.stringify(exportData,null,2);
   const timestamp = new Date().toISOString().slice(0,19).replace(/:/g,'-');
   const filename = `存款全量备份_${timestamp}.json`;
-  if(window.cordova && window.cordova.file){
-    await exportWithCordova(json,filename,'application/json');
-  }else{
-    fallbackDownload(json,filename,'application/json');
-  }
+  await exportFile(json, filename, 'application/json');
 }
 
 async function restoreJSON(file){
@@ -2066,11 +2141,8 @@ async function restoreJSON(file){
   alert('✅ JSON 恢复成功！');
 }
 
-/* ---------------- 修复重复数据 ---------------- */
 async function fixDuplicateRecords(){
   const allDepositsData = await getAllDeposits();
-
-  // 用与 detectDuplicates 相同的规范化逻辑
   const nStr = (v) => String(v ?? '').trim().toLowerCase();
   const nNum = (v) => {
     const n = Number(v);
@@ -2125,9 +2197,8 @@ let allDeposits = [];
 let duplicateIds = new Set();
 let currentFilteredDeposits = [];
 let cordovaReady = false;
-let onlyDuplicatesMode = false; // "只看重复"模式开关
+let onlyDuplicatesMode = false;
 
-/* ---------------- 数据刷新 ---------------- */
 async function refreshData(){
   allDeposits = await getDeposits(currentUser);
   allDeposits = await enrichDeposits(allDeposits);
@@ -2174,12 +2245,10 @@ function applySort(){
   });
 }
 
-/* ============ 重复检测（规范化，稳健版） ============ */
 function detectDuplicates(){
   const keyMap = new Map();
   duplicateIds.clear();
 
-  // 规范化工具
   const nStr = (v) => String(v ?? '').trim().toLowerCase();
   const nNum = (v) => {
     const n = Number(v);
@@ -2193,12 +2262,8 @@ function detectDuplicates(){
 
   for(const d of allDeposits){
     const key = [
-      nStr(d.user),
-      nStr(d.bank),
-      nStr(d.depositType),
-      nNum(d.amount),
-      nDate(d.startDate),
-      nDate(d.maturityDate),
+      nStr(d.user), nStr(d.bank), nStr(d.depositType),
+      nNum(d.amount), nDate(d.startDate), nDate(d.maturityDate),
       nNum(d.rate)
     ].join('|');
 
@@ -2210,9 +2275,7 @@ function detectDuplicates(){
       keyMap.set(key, d.id);
     }
   }
-
-  console.log('[重复检测] 共标记 ' + duplicateIds.size + ' 条重复，IDs =',
-    Array.from(duplicateIds));
+  console.log('[重复检测] 共标记 ' + duplicateIds.size + ' 条重复，IDs =', Array.from(duplicateIds));
 }
 
 function updateFilterDropdowns(){
@@ -2242,11 +2305,9 @@ function updateFilterDropdowns(){
   }
 }
 
-/* ---------------- 列表更新 ---------------- */
 async function updateList(){
   let filtered = [...allDeposits];
 
-  // "只看重复"模式：优先过滤
   if(onlyDuplicatesMode){
     filtered = filtered.filter(d => duplicateIds.has(d.id));
   }
@@ -2332,14 +2393,6 @@ async function updateList(){
   setText('scDailyIncome', '¥' + fmt(dailyIncome,2));
   setText('scCount',       String(filtered.length));
 
-  setTitle('scPrincipal', `本金总额 ¥${totalAmount.toFixed(2)}`);
-  setTitle('scCurrInterest', `当前利息 ¥${totalCurr.toFixed(2)}`);
-  setTitle('scCurrTotal', `当前本息合计 ¥${totalCurrTotal.toFixed(2)}`);
-  setTitle('scMatInterest', `到期利息 ¥${totalMat.toFixed(2)}`);
-  setTitle('scMatTotal', `到期本息合计 ¥${totalMatTotal.toFixed(2)}`);
-  setTitle('scAvgRate', `加权平均年利率 ${avgRate.toFixed(4)}%`);
-  setTitle('scDailyIncome', `按今日计算的日均收益 ¥${dailyIncome.toFixed(4)}`);
-
   renderDepositList(filtered);
   updateSelectedStats();
 }
@@ -2347,10 +2400,6 @@ async function updateList(){
 function setText(id,val){
   const el = document.getElementById(id);
   if(el) el.textContent = val;
-}
-function setTitle(id,val){
-  const el = document.getElementById(id);
-  if(el) el.title = val;
 }
 function fmt(n,digits=2){
   if(n === null || n === undefined || isNaN(n)) return '0';
@@ -2360,7 +2409,6 @@ function fmt(n,digits=2){
   });
 }
 
-/* ---------------- 渲染列表 ---------------- */
 function renderDepositList(filtered){
   const container = document.getElementById('depositListContainer');
   if(!container) return;
@@ -2546,7 +2594,6 @@ function updateBatchButtons(){
   if(batchDelete) batchDelete.disabled = !hasAny;
 }
 
-/* ---------------- 用户选择器 ---------------- */
 async function refreshUserSelector(){
   const users = await getUsers();
   const select = document.getElementById('userSelect');
@@ -2557,7 +2604,7 @@ async function refreshUserSelector(){
 }
 
 /* ================================================================
-   模态框：存款编辑
+   存款编辑模态框
 ================================================================ */
 function parseTermValue(termVal){
   if(termVal === '0' || termVal === 'custom') return null;
@@ -2764,15 +2811,9 @@ async function showDepositModal(deposit=null){
         notes:modalDiv.querySelector('#modalNotes').value.trim(),
         is_unlocked:deposit?.is_unlocked || 0
       };
-      if(!newDeposit.bank){
-        throw new Error('请填写银行/平台');
-      }
-      if(!newDeposit.depositType){
-        throw new Error('请填写存款类型');
-      }
-      if(isNaN(newDeposit.amount) || newDeposit.amount <= 0){
-        throw new Error('请填写有效金额');
-      }
+      if(!newDeposit.bank) throw new Error('请填写银行/平台');
+      if(!newDeposit.depositType) throw new Error('请填写存款类型');
+      if(isNaN(newDeposit.amount) || newDeposit.amount <= 0) throw new Error('请填写有效金额');
       if(newDeposit.startDate && newDeposit.maturityDate && newDeposit.maturityDate < newDeposit.startDate){
         throw new Error('到期日期不能早于起始日期');
       }
@@ -2804,7 +2845,7 @@ async function showDepositModal(deposit=null){
 }
 
 /* ================================================================
-   模态框：利率历史
+   利率历史模态框
 ================================================================ */
 async function showRateHistoryModal(depositId){
   const deposit = allDeposits.find(d=>d.id === depositId);
@@ -2874,7 +2915,7 @@ async function showRateHistoryModal(depositId){
 }
 
 /* ================================================================
-   模态框：用户管理
+   用户管理模态框
 ================================================================ */
 async function showManageUsersModal(){
   const users = await getUsers();
@@ -2969,7 +3010,7 @@ async function showManageUsersModal(){
 }
 
 /* ================================================================
-   图表通用：双击放大
+   图表双击放大
 ================================================================ */
 function enableDoubleClickZoom(chartInstance){
   if(!chartInstance) return;
@@ -2996,14 +3037,13 @@ function enableDoubleClickZoom(chartInstance){
     modalBig.addEventListener('click',e=>{
       if(e.target === modalBig){ newChart.dispose(); modalBig.remove(); }
     });
-    const resizeHandler = ()=>newChart.resize();
-    window.addEventListener('resize',resizeHandler);
+    window.addEventListener('resize',()=>newChart.resize());
     setTimeout(()=>newChart.resize(),80);
   };
 }
 
 /* ================================================================
-   统计图表模态框
+   统计图表
 ================================================================ */
 async function showStatsModal(){
   const data = currentFilteredDeposits.length ? currentFilteredDeposits : allDeposits;
@@ -3263,10 +3303,7 @@ async function showForecast(){
         ]),
         borderRadius:[7,7,0,0]
       },
-      label:{
-        show:true,position:'top',fontSize:9,
-        formatter:(p)=>(p.value / 10000).toFixed(1) + '万'
-      }
+      label:{show:true,position:'top',fontSize:9,formatter:(p)=>(p.value / 10000).toFixed(1) + '万'}
     }]
   });
   enableDoubleClickZoom(chart);
@@ -3279,7 +3316,7 @@ async function showForecast(){
 }
 
 /* ================================================================
-   PDF 导出（含图表页）
+   PDF 导出
 ================================================================ */
 async function exportPDF(){
   try{
@@ -3409,13 +3446,8 @@ async function exportPDF(){
       const height = Math.max(container.scrollHeight,200);
 
       const canvas = await html2canvas(container,{
-        scale:2,
-        useCORS:true,
-        logging:false,
-        backgroundColor:'#ffffff',
-        width:width,
-        height:height,
-        windowWidth:width
+        scale:2,useCORS:true,logging:false,
+        backgroundColor:'#ffffff',width:width,height:height,windowWidth:width
       });
       document.body.removeChild(container);
       return {canvas,width,height};
@@ -3476,20 +3508,17 @@ async function exportPDF(){
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('landscape','mm','a4');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 10;
-    const contentWidth = pageWidth - margin * 2;
+    const contentWidth = pdf.internal.pageSize.getWidth() - margin * 2;
 
     const ROWS_PER_PAGE = 20;
     const tablePages = [];
     for(let i=0;i<data.length;i += ROWS_PER_PAGE){
       tablePages.push(data.slice(i,i + ROWS_PER_PAGE));
     }
-    const totalTablePages = tablePages.length;
-    const totalPages = totalTablePages + (hasCharts ? 1 : 0);
+    const totalPages = tablePages.length + (hasCharts ? 1 : 0);
 
-    for(let p=0;p<totalTablePages;p++){
+    for(let p=0;p<tablePages.length;p++){
       const html = buildTablePageHTML(tablePages[p],p,totalPages);
       const {canvas,width,height} = await captureElement(html,0);
       const scaleFactor = contentWidth / width;
@@ -3537,19 +3566,7 @@ async function exportPDF(){
       throw new Error('生成的 PDF 为空，请重试');
     }
 
-    if(window.cordova && window.cordova.file && cordovaReady){
-      await exportWithCordova(pdfBlob,filename,'application/pdf');
-      showToast('✅ PDF 已保存到 Download/存款管家备份');
-    }else{
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(pdfBlob);
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(()=>URL.revokeObjectURL(link.href),1500);
-      showToast('📄 PDF 已开始下载');
-    }
+    await exportFile(pdfBlob, filename, 'application/pdf');
   }catch(err){
     console.error('导出PDF失败:',err);
     alert('导出 PDF 失败：' + err.message);
@@ -3584,9 +3601,6 @@ function populateYearSelectors(){
   update('maturityYearQuick');
 }
 
-/* ================================================================
-   主题切换
-================================================================ */
 function initTheme(){
   const saved = localStorage.getItem('deposit_theme');
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -3652,11 +3666,7 @@ function bindEvents(){
     const csv = generateCSVBlob(currentUser,enriched);
     const ts = new Date().toISOString().slice(0,19).replace(/:/g,'-');
     const fn = `存款备份_${currentUser === null ? '合计' : currentUser}_${ts}.csv`;
-    if(window.cordova && window.cordova.file && cordovaReady){
-      await exportWithCordova(csv,fn,'text/csv');
-    }else{
-      fallbackDownload(csv,fn,'text/csv');
-    }
+    await exportFile(csv, fn, 'text/csv');
   });
 
   document.getElementById('backupJsonBtn').addEventListener('click',backupJSON);
@@ -3721,7 +3731,6 @@ function bindEvents(){
     }
   });
 
-  // 只看重复
   document.getElementById('showDuplicatesBtn')?.addEventListener('click',async ()=>{
     if(duplicateIds.size === 0){
       showToast('✅ 当前没有检测到重复项');
@@ -3732,7 +3741,6 @@ function bindEvents(){
     showToast(`♻️ 已切换到「只看重复」模式，共 ${duplicateIds.size} 条`);
   });
 
-  // 取消只看重复
   document.getElementById('clearDuplicateFilterBtn')?.addEventListener('click',async ()=>{
     if(!onlyDuplicatesMode){
       showToast('当前不在「只看重复」模式');
@@ -3781,6 +3789,64 @@ function bindEvents(){
     applyResponsive();
     window.addEventListener('resize',applyResponsive);
   }
+  // ========== 从备份夹恢复 ==========
+  document.getElementById('restoreFromBackupBtn')?.addEventListener('click', async () => {
+    if (!isPlusReady()) {
+      showToast('⚠️ 此功能仅在打包后的 App 中可用');
+      return;
+    }
+    const subDir = '存款管家备份';
+    window.plus.io.resolveLocalFileSystemURL('_downloads/', (root) => {
+      root.getDirectory(subDir, { create: false }, (dirEntry) => {
+        const reader = dirEntry.createReader();
+        reader.readEntries((entries) => {
+          const files = entries.filter(e => e.isFile && (e.name.endsWith('.csv') || e.name.endsWith('.json')));
+          if (files.length === 0) { alert('备份夹里没有找到 CSV 或 JSON 文件'); return; }
+          const fileListHtml = files.map(f =>
+            `<div style="padding:12px;border-bottom:1px solid var(--border);">
+               <span style="font-weight:700;">${f.name}</span>
+               <button class="small success restore-file-btn" data-name="${f.name}" style="float:right;margin-top:-4px;">恢复</button>
+             </div>`
+          ).join('');
+          const modal = document.createElement('div');
+          modal.className = 'modal';
+          modal.innerHTML = `
+            <div class="modal-content" style="max-width:400px;">
+              <h3>📂 选择要恢复的文件</h3>
+              <div style="max-height:300px;overflow-y:auto;margin-top:10px;">${fileListHtml}</div>
+              <button class="secondary small" id="closeRestoreModal" style="width:100%;margin-top:14px;">取消</button>
+            </div>`;
+          document.body.appendChild(modal);
+          modal.querySelector('#closeRestoreModal').onclick = () => modal.remove();
+          modal.querySelectorAll('.restore-file-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const fileName = btn.dataset.name;
+              modal.remove();
+              showLoading(true);
+              try {
+                dirEntry.getFile(fileName, { create: false }, (fileEntry) => {
+                  fileEntry.file(async (file) => {
+                    showLoading(false);
+                    if (fileName.endsWith('.json')) {
+                      await restoreJSON(file);
+                    } else {
+                      const result = await importFromCSV(file);
+                      alert(`✅ 导入完成：新增 ${result.added} 条记录`);
+                      await refreshUserSelector();
+                      await refreshData();
+                    }
+                  }, (e) => { showLoading(false); alert('读取失败：' + e.message); });
+                }, (e) => { showLoading(false); alert('打开失败：' + e.message); });
+              } catch (err) {
+                showLoading(false);
+                alert('恢复失败：' + err.message);
+              }
+            };
+          });
+        }, (e) => alert('读取备份夹失败：' + e.message));
+      }, () => { alert('还没有创建备份夹，请先点一下"备份 CSV"或"备份 JSON"。'); });
+    }, (e) => alert('找不到下载目录：' + e.message));
+  });
 
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden){
@@ -3807,6 +3873,9 @@ function bindEvents(){
   try{
     initTheme();
 
+    // 等待 5+App 环境就绪
+    await waitForPlusReady(3000);
+
     const needLock = hasAppPassword() || localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
     if(needLock){
       await showLockScreen();
@@ -3822,15 +3891,15 @@ function bindEvents(){
     await refreshData();
     bindEvents();
     populateYearSelectors();
-    document.getElementById('startDateFrom').value = '';
-    document.getElementById('startDateTo').value = '';
-    document.getElementById('maturityDateFrom').value = '';
-    document.getElementById('maturityDateTo').value = '';
 
-    document.addEventListener('deviceready',()=>{
-      cordovaReady = true;
-      showToast('📱 存款管家 Pro 已就绪',3000);
-    },false);
+    // 5+App 就绪提示
+    if(isPlusReady()){
+      console.log('✅ 运行在 HBuilderX 5+App 环境');
+    }else if(window.cordova){
+      console.log('✅ 运行在 Cordova 环境');
+    }else{
+      console.log('✅ 运行在浏览器环境');
+    }
 
     setTimeout(()=>checkReminders(false),1200);
     setInterval(()=>checkReminders(false),24 * 3600 * 1000);
