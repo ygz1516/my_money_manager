@@ -34,10 +34,22 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Setup Gradle (Compatible Version)
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+      - name: Force Gradle 8.7 (replace system 9.8.0)
+        run: |
+          echo "=== 删除系统自带的 Gradle 9.8.0 ==="
+          sudo rm -rf /usr/share/gradle-9.8.0 || true
+          sudo rm -f /usr/bin/gradle || true
+
+          echo "=== 下载 Gradle 8.7 ==="
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle-8.7-bin.zip
+          sudo unzip -q /tmp/gradle-8.7-bin.zip -d /usr/share/
+
+          echo "=== 建立软链接 ==="
+          sudo ln -sf /usr/share/gradle-8.7/bin/gradle /usr/bin/gradle
+
+          echo "=== 验证 ==="
+          which gradle
+          gradle --version
 
       - name: Install Cordova
         run: npm install -g cordova
@@ -46,9 +58,7 @@ jobs:
         run: |
           echo "=== 仓库根目录文件 ==="
           ls -la
-          echo "=== 检查 index.html ==="
           test -f index.html || (echo "❌ 缺少 index.html" && exit 1)
-          echo "=== 检查 icon.png ==="
           test -f icon.png || (echo "❌ 缺少 icon.png" && exit 1)
           echo "✅ 必需文件都在"
 
@@ -83,15 +93,10 @@ jobs:
             echo "覆盖: $f"
           done
 
-          echo "===== 7. 生成 Gradle Wrapper（锁定 8.7） ====="
-          cd platforms/android
-          gradle wrapper --gradle-version 8.7
-          cd ../..
-
-          echo "===== 8. 构建 APK ====="
+          echo "===== 7. 构建 APK ====="
           cordova build android --verbose
 
-          echo "===== 9. 复制 APK 到输出目录 ====="
+          echo "===== 8. 复制 APK 到输出目录 ====="
           mkdir -p ../output
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk \
              ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
