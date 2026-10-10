@@ -73,9 +73,9 @@ jobs:
           echo "===== 2. 覆盖 index.html ====="
           cp ../index.html www/index.html
 
-          echo "===== 3. 修改 config.xml：AndroidX + 生物识别权限 ====="
+          echo "===== 3. 修改 config.xml：仅开启 AndroidX ====="
           sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
-          sed -i '/<\/widget>/i \    <platform name="android">\n        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n            <uses-permission android:name="android.permission.USE_FINGERPRINT" />\n        </config-file>\n    </platform>' config.xml
+          echo "（指纹权限由 cordova-plugin-fingerprint-aio 插件自动处理）"
 
           echo "===== 4. 添加插件 ====="
           cordova plugin add cordova-plugin-file
@@ -94,6 +94,13 @@ jobs:
           done
 
           echo "===== 7. 构建 APK ====="
+          cordova build android --verbose
+
+          echo "===== 8. 复制 APK 到输出目录 ====="
+          mkdir -p ../output
+          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk \
+             ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
+          echo "✅ 构建完成"
           cordova build android --verbose
 
           echo "===== 8. 复制 APK 到输出目录 ====="
