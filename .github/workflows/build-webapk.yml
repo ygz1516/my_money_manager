@@ -95,18 +95,19 @@ jobs:
           echo "===== 5. 添加 Android 平台 ====="
           cordova platform add android@12
 
-          echo "===== 6. 自动生成并替换所有图标 ====="
+          echo "===== 6. 自动生成并替换图标和启动图 ====="
           mkdir -p resources
           cp ../icon.png resources/icon.png
-          # 兼容处理：有的版本 cordova-res 不支持 --type 参数
-          if cordova-res android --skip-config --copy --type icon 2>/dev/null; then
-            echo "✅ 使用 --type icon 生成成功"
+
+          if [ -f ../splash.png ]; then
+            echo "✅ 检测到 splash.png，将同时生成图标和启动图"
+            cp ../splash.png resources/splash.png
+            cordova-res android --copy
           else
-            echo "⚠️ --type 参数不支持，改用备用方案（图标兼作启动图）"
-            cp ../icon.png resources/splash.png
-            cordova-res android --skip-config --copy
+            echo "⚠️ 未检测到 splash.png，仅生成图标"
+            cordova-res android --copy --type icon
           fi
-          echo "✅ 图标已生成"
+          echo "✅ 图标和启动图处理完毕"
 
           echo "===== 7. 构建 APK ====="
           cordova build android --verbose
