@@ -22,63 +22,80 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+          packages: >-
+            platform-tools
+            platforms;android-33
+            platforms;android-34
+            build-tools;33.0.2
+            build-tools;34.0.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
           node-version: '20'
 
-      # 关键步骤：强制使用 Cordova 支持的 Gradle 版本
       - name: Setup Gradle (Compatible Version)
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7' # Cordova Android 12/13 兼容的 Gradle 版本
+          gradle-version: '8.7'
 
       - name: Install Cordova
         run: npm install -g cordova
 
       - name: Check required files
         run: |
+          echo "=== 仓库根目录文件 ==="
+          ls -la
+          echo "=== 检查 index.html ==="
           test -f index.html || (echo "❌ 缺少 index.html" && exit 1)
+          echo "=== 检查 icon.png ==="
           test -f icon.png || (echo "❌ 缺少 icon.png" && exit 1)
           echo "✅ 必需文件都在"
 
       - name: Build APK with Cordova
         run: |
           set -e
+
+          echo "===== 1. 创建 Cordova 项目 ====="
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
 
+          echo "===== 2. 覆盖 index.html ====="
           cp ../index.html www/index.html
 
-          # AndroidX + 生物识别权限
+          echo "===== 3. 修改 config.xml：AndroidX + 生物识别权限 ====="
           sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
           sed -i '/<\/widget>/i \    <platform name="android">\n        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n            <uses-permission android:name="android.permission.USE_FINGERPRINT" />\n        </config-file>\n    </platform>' config.xml
 
+          echo "===== 4. 添加插件 ====="
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-file-opener2
           cordova plugin add cordova-plugin-fingerprint-aio --variable FACEID_USAGE_DESCRIPTION="使用面容ID解锁存款管家"
 
+          echo "===== 5. 添加 Android 平台 ====="
           cordova platform add android@12
 
-          # 图标覆盖
+          echo "===== 6. 手动覆盖图标 ====="
           grep -o 'res/icon/[^"]*' config.xml | sort -u | while read -r f; do
             mkdir -p "$(dirname "$f")"
             cp ../icon.png "$f" 2>/dev/null || true
+            echo "覆盖: $f"
           done
 
-          # 确保使用正确的 Gradle Wrapper
+          echo "===== 7. 生成 Gradle Wrapper（锁定 8.7） ====="
           cd platforms/android
           gradle wrapper --gradle-version 8.7
           cd ../..
 
+          echo "===== 8. 构建 APK ====="
           cordova build android --verbose
 
+          echo "===== 9. 复制 APK 到输出目录 ====="
           mkdir -p ../output
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk \
              ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
+          echo "✅ 构建完成"
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v6
