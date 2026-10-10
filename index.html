@@ -663,6 +663,9 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
+<!-- 自定义启动画面 -->
+<div id="app-splash" style="position: fixed; inset: 0; z-index: 99999; background: #EADDCB url('splash.png') no-repeat center center; background-size: contain; transition: opacity 0.6s ease;"></div>
+
 <div id="app" class="app-container">
 
   <!-- ==================== 主卡片 ==================== -->
@@ -3842,6 +3845,13 @@ function bindEvents(){
 
     setTimeout(()=>checkReminders(false),1200);
     setInterval(()=>checkReminders(false),24 * 3600 * 1000);
+
+    // ===== 数据加载完，隐藏自定义启动图 =====
+    const splashEl = document.getElementById('app-splash');
+    if(splashEl){
+      splashEl.style.opacity = '0';
+      setTimeout(() => splashEl.remove(), 600);
+    }
 
     document.addEventListener('keydown',e=>{
       if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
