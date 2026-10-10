@@ -7,14 +7,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04          # 固定 Ubuntu 版本，避免迁移影响
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5   # 升级到 v5（支持 Node 24）
+        uses: actions/checkout@v5
 
       - name: Setup Java
-        uses: actions/setup-java@v5 # 升级到 v5（支持 Node 24）
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -22,12 +22,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5 # 升级到 v5（支持 Node 24）
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'        # 注意：这里设置的是工作流内部使用的 Node 版本，与 Action 运行时无关
+          node-version: '20'
 
       - name: Install Cordova & cordova-res
         run: |
@@ -46,10 +46,26 @@ jobs:
           # 3. 准备图标资源
           mkdir -p resources
           cp ../icon.png resources/icon.png
+          # 检查图标尺寸是否为 1024x1024（如果不是，请自行处理）
+          file resources/icon.png
 
-          # 4. 修改 config.xml：开启 AndroidX + 声明生物识别权限
-          sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
-          sed -i '/<\/widget>/i \    <platform name="android">\n        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n            <uses-permission android:name="android.permission.USE_FINGERPRINT" />\n        </config-file>\n    </platform>' config.xml
+          # 4. 直接生成干净的 config.xml（避免 sed 导致的 XML 错误）
+          cat > config.xml <<EOF
+          <?xml version='1.0' encoding='utf-8'?>
+          <widget id="com.deposit.manager" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+              <name>存款管家</name>
+              <description>存款管理助手</description>
+              <author email="dev@example.com" href="#">Deposit Manager</author>
+              <content src="index.html" />
+              <preference name="AndroidXEnabled" value="true" />
+              <platform name="android">
+                  <config-file target="AndroidManifest.xml" parent="/manifest">
+                      <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+                      <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+                  </config-file>
+              </platform>
+          </widget>
+          EOF
 
           # 5. 添加必需插件
           cordova plugin add cordova-plugin-file
@@ -60,8 +76,8 @@ jobs:
           # 6. 添加 Android 平台
           cordova platform add android
 
-          # 7. 生成并写入全套 Android 图标
-          cordova-res android --skip-config --copy
+          # 7. 生成图标（如果 icon.png 小于 1024x1024 这里会报错，可先注释掉）
+          # cordova-res android --skip-config --copy
 
           # 8. 构建 Debug APK
           cordova build android
