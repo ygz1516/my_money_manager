@@ -34,6 +34,23 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Force Gradle 8.7 (replace system 9.8.0)
+        run: |
+          echo "=== 删除系统自带的 Gradle 9.8.0 ==="
+          sudo rm -rf /usr/share/gradle-9.8.0 || true
+          sudo rm -f /usr/bin/gradle || true
+
+          echo "=== 下载 Gradle 8.7 ==="
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle-8.7-bin.zip
+          sudo unzip -q /tmp/gradle-8.7-bin.zip -d /usr/share/
+
+          echo "=== 建立软链接 ==="
+          sudo ln -sf /usr/share/gradle-8.7/bin/gradle /usr/bin/gradle
+
+          echo "=== 验证 ==="
+          which gradle
+          gradle --version
+
       - name: Install Cordova & cordova-res
         run: |
           npm install -g cordova
@@ -78,10 +95,17 @@ jobs:
           echo "===== 5. 添加 Android 平台 ====="
           cordova platform add android@12
 
-          echo "===== 6. 自动生成并替换所有图标（只处理图标，跳过启动图） ====="
+          echo "===== 6. 自动生成并替换所有图标 ====="
           mkdir -p resources
           cp ../icon.png resources/icon.png
-          cordova-res android --skip-config --copy --type icon
+          # 兼容处理：有的版本 cordova-res 不支持 --type 参数
+          if cordova-res android --skip-config --copy --type icon 2>/dev/null; then
+            echo "✅ 使用 --type icon 生成成功"
+          else
+            echo "⚠️ --type 参数不支持，改用备用方案（图标兼作启动图）"
+            cp ../icon.png resources/splash.png
+            cordova-res android --skip-config --copy
+          fi
           echo "✅ 图标已生成"
 
           echo "===== 7. 构建 APK ====="
