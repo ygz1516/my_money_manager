@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
 <meta name="theme-color" content="#4f6ef7">
 <title>存款管家 · 旗舰版 Pro</title>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 /* ============================================================
    主题变量
@@ -504,6 +501,119 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* ============================================================
+   锁屏界面
+============================================================ */
+.lock-screen{
+  position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 900px 500px at -5% -10%,var(--bg-glow1) 0%,transparent 62%),
+    radial-gradient(ellipse 800px 500px at 105% 105%,var(--bg-glow2) 0%,transparent 62%),
+    var(--bg);
+  display:flex;justify-content:center;align-items:center;
+  z-index:9000;padding:20px;
+  animation:fadeIn 0.25s ease;
+}
+.lock-card{
+  background:var(--card-solid);
+  border-radius:24px;
+  padding:30px 24px;
+  width:100%;max-width:360px;
+  box-shadow:0 25px 60px rgba(15,23,42,0.28);
+  border:1px solid var(--border);
+  text-align:center;
+  animation:slideUp 0.32s cubic-bezier(0.34,1.3,0.64,1);
+}
+.lock-icon{
+  font-size:3.2rem;line-height:1;margin-bottom:8px;
+  animation:lockPulse 2.4s ease-in-out infinite;
+}
+@keyframes lockPulse{
+  0%,100%{transform:scale(1);}
+  50%{transform:scale(1.08);}
+}
+.lock-title{
+  font-size:1.2rem;font-weight:800;margin-bottom:4px;
+  background:linear-gradient(120deg,var(--primary),var(--purple));
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.lock-subtitle{
+  font-size:0.78rem;color:var(--text-muted);margin-bottom:18px;
+}
+.lock-input-wrap{position:relative;margin-bottom:10px;}
+.lock-input{
+  width:100%;padding:13px 44px 13px 16px;margin:0;
+  border:1.8px solid var(--border);border-radius:14px;
+  font-size:1.05rem;text-align:center;letter-spacing:0.25em;
+  background:var(--card-bg-2);font-weight:700;
+}
+.lock-input:focus{
+  border-color:var(--primary);
+  box-shadow:0 0 0 4px var(--primary-soft);
+  background:var(--card-solid);
+}
+.lock-eye{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  background:transparent;border:none;color:var(--text-muted);
+  cursor:pointer;padding:8px;box-shadow:none;font-size:1rem;
+}
+.lock-eye:hover{color:var(--primary);box-shadow:none;filter:none;}
+.lock-btn{
+  width:100%;padding:13px;border-radius:14px;
+  font-size:0.95rem;font-weight:700;margin-top:6px;
+}
+.lock-biometric{
+  width:100%;padding:13px;border-radius:14px;
+  font-size:0.92rem;font-weight:700;margin-top:10px;
+  background:linear-gradient(135deg,#818cf8,#6366f1);
+}
+.lock-error{
+  color:var(--danger);font-size:0.78rem;font-weight:600;
+  height:20px;margin-bottom:6px;
+  display:flex;align-items:center;justify-content:center;gap:4px;
+}
+.lock-shake{animation:shake 0.42s cubic-bezier(.36,.07,.19,.97) both;}
+@keyframes shake{
+  10%,90%{transform:translateX(-2px);}
+  20%,80%{transform:translateX(4px);}
+  30%,50%,70%{transform:translateX(-7px);}
+  40%,60%{transform:translateX(7px);}
+}
+.lock-attempts{
+  font-size:0.72rem;color:var(--text-muted);margin-top:12px;
+}
+.lock-footer{
+  margin-top:18px;font-size:0.72rem;color:var(--text-muted);
+  display:flex;align-items:center;justify-content:center;gap:5px;
+}
+
+/* 安全开关行 */
+.sec-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 4px;border-bottom:1px solid var(--border);gap:12px;
+}
+.sec-row:last-of-type{border-bottom:none;}
+.sec-row-info{flex:1;min-width:0;text-align:left;}
+.sec-row-title{font-weight:700;font-size:0.88rem;}
+.sec-row-desc{font-size:0.72rem;color:var(--text-muted);margin-top:2px;}
+.switch{
+  position:relative;display:inline-block;width:48px;height:28px;flex-shrink:0;
+}
+.switch input{opacity:0;width:0;height:0;margin:0;}
+.slider{
+  position:absolute;cursor:pointer;inset:0;
+  background:var(--border-strong);transition:0.25s;border-radius:28px;
+}
+.slider:before{
+  content:'';position:absolute;height:22px;width:22px;left:3px;bottom:3px;
+  background:#fff;transition:0.25s;border-radius:50%;
+  box-shadow:0 2px 5px rgba(0,0,0,0.2);
+}
+.switch input:checked + .slider{background:linear-gradient(135deg,#34d399,#059669);}
+.switch input:checked + .slider:before{transform:translateX(20px);}
+.switch input:disabled + .slider{opacity:0.4;cursor:not-allowed;}
+
+/* ============================================================
    响应式
 ============================================================ */
 @media (max-width:640px){
@@ -550,6 +660,7 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
         <button id="remindBtn" class="small warning icon-btn" title="到期提醒">⏰</button>
         <button id="forecastBtn" class="small warning icon-btn" title="到期预测">📈</button>
         <button id="fixDataBtn" class="small ghost icon-btn" title="修复重复">🔧</button>
+        <button id="securityBtn" class="small danger icon-btn" title="安全设置">🔐</button>
         <button id="themeToggleBtn" class="small purple icon-btn" title="切换主题">🌙</button>
       </div>
     </div>
@@ -636,10 +747,10 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
       <button id="backupJsonBtn" class="secondary small">💾 JSON</button>
       <button id="openBackupFolderBtn" class="purple small">📂 备份夹</button>
       <label id="restoreLabel" class="btn-like secondary small" style="background:linear-gradient(135deg,#64748b,#475569);cursor:pointer;">📂 恢复CSV
-        <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="position:absolute;left:-9999px;opacity:0;width:1px;height:1px;">
+        <input type="file" id="restoreFileInput" accept=".csv,text/csv" style="display:none;">
       </label>
       <label id="restoreJsonLabel" class="btn-like secondary small" style="background:linear-gradient(135deg,#64748b,#475569);cursor:pointer;">📂 恢复JSON
-        <input type="file" id="restoreJsonInput" accept=".json" style="position:absolute;left:-9999px;opacity:0;width:1px;height:1px;">
+        <input type="file" id="restoreJsonInput" accept=".json" style="display:none;">
       </label>
       <button id="pdfBtn" class="small" style="background:linear-gradient(135deg,#f97316,#ea580c);">📄 导出PDF</button>
       <div class="sep"></div>
@@ -654,10 +765,11 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
   <div id="depositListContainer" class="deposit-list-container"></div>
 </div>
 
+<script src="cordova.js"></script>
 <script>
 /* ================================================================
    存款管家 · 旗舰版 Pro
-   全功能单文件应用
+   全功能单文件应用（含密码 + 指纹识别）
 ================================================================ */
 (function(){
 'use strict';
@@ -678,7 +790,545 @@ const PRESET_DEPOSIT_TYPES = [
   "国债","债券基金","指数基金","养老理财"
 ];
 
-/* ======================== IndexedDB ======================== */
+/* ======================== 安全存储 Key ======================== */
+const SEC_PWD_HASH_KEY = 'app_password_hash';
+const SEC_PWD_SALT_KEY = 'app_password_salt';
+const SEC_BIO_ENABLED_KEY = 'biometric_enabled';
+const SEC_AUTO_LOCK_KEY = 'auto_lock_enabled';
+const SEC_FAIL_COUNT_KEY = 'lock_fail_count';
+const SEC_LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 后台 5 分钟后自动锁定
+
+let lastHiddenTime = 0;
+
+/* ================================================================
+   一、密码哈希与验证
+================================================================ */
+function randomSalt(len = 16){
+  const arr = new Uint8Array(len);
+  if(window.crypto && window.crypto.getRandomValues){
+    window.crypto.getRandomValues(arr);
+  }else{
+    for(let i = 0; i < len; i++) arr[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+/** 降级哈希（当 crypto.subtle 不可用时使用） */
+function fallbackHash(str){
+  // 多个不同初始值的 FNV-1a 混合，提高碰撞难度
+  let h1 = 0x811c9dc5, h2 = 0x1000193, h3 = 0xdeadbeef;
+  for(let i = 0; i < str.length; i++){
+    const c = str.charCodeAt(i);
+    h1 ^= c; h1 = (h1 * 0x01000193) >>> 0;
+    h2 = ((h2 << 5) - h2 + c) >>> 0;
+    h3 ^= (c + i); h3 = (h3 * 0x85ebca6b) >>> 0;
+  }
+  return (h1.toString(16).padStart(8,'0') +
+          h2.toString(16).padStart(8,'0') +
+          h3.toString(16).padStart(8,'0'));
+}
+
+/** 计算密码哈希（Web Crypto 优先，自动降级） */
+async function hashPassword(password, salt){
+  const input = `${salt}::${password}::deposit_guard`;
+  // 迭代增强
+  if(window.crypto && window.crypto.subtle && window.crypto.subtle.digest){
+    try{
+      let data = new TextEncoder().encode(input);
+      let buf = await window.crypto.subtle.digest('SHA-256', data);
+      // 再迭代 500 次
+      for(let i = 0; i < 500; i++){
+        buf = await window.crypto.subtle.digest('SHA-256', buf);
+      }
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    }catch(e){
+      // 落到降级方案
+    }
+  }
+  // 降级：迭代 FNV
+  let out = input;
+  for(let i = 0; i < 2000; i++){
+    out = fallbackHash(out + i);
+  }
+  return out;
+}
+
+async function setAppPassword(password){
+  const salt = randomSalt();
+  const hash = await hashPassword(password, salt);
+  localStorage.setItem(SEC_PWD_SALT_KEY, salt);
+  localStorage.setItem(SEC_PWD_HASH_KEY, hash);
+  localStorage.setItem(SEC_FAIL_COUNT_KEY, '0');
+}
+
+async function verifyPassword(password){
+  const storedHash = localStorage.getItem(SEC_PWD_HASH_KEY);
+  const salt = localStorage.getItem(SEC_PWD_SALT_KEY) || '';
+  if(!storedHash) return true; // 未设置密码
+  const inputHash = await hashPassword(password, salt);
+  return inputHash === storedHash;
+}
+
+function hasAppPassword(){
+  return !!localStorage.getItem(SEC_PWD_HASH_KEY);
+}
+
+function removeAppPassword(){
+  localStorage.removeItem(SEC_PWD_HASH_KEY);
+  localStorage.removeItem(SEC_PWD_SALT_KEY);
+  localStorage.removeItem(SEC_FAIL_COUNT_KEY);
+}
+
+/* ================================================================
+   二、指纹 / 生物识别（Cordova 插件）
+================================================================ */
+function waitForDeviceReady(timeout = 1800){
+  if(window.cordova) return Promise.resolve(true);
+  return new Promise(resolve => {
+    let done = false;
+    const timer = setTimeout(()=>{ if(!done){ done = true; resolve(false); } }, timeout);
+    document.addEventListener('deviceready', ()=>{
+      if(!done){ done = true; clearTimeout(timer); resolve(true); }
+    }, { once:true });
+  });
+}
+
+function isBiometricPluginAvailable(){
+  return !!(window.Fingerprint && typeof window.Fingerprint.isAvailable === 'function');
+}
+
+/** 检查设备是否支持生物识别 */
+function checkBiometricSupport(){
+  return new Promise(resolve => {
+    if(!isBiometricPluginAvailable()) return resolve(false);
+    try{
+      window.Fingerprint.isAvailable(
+        () => resolve(true),
+        () => resolve(false)
+      );
+    }catch(e){
+      resolve(false);
+    }
+  });
+}
+
+/** 执行指纹 / 面容认证 */
+function authenticateWithBiometric(){
+  return new Promise((resolve, reject) => {
+    if(!isBiometricPluginAvailable()){
+      reject(new Error('设备不支持生物识别'));
+      return;
+    }
+    try{
+      window.Fingerprint.show({
+        title: '身份验证',
+        subtitle: '请验证指纹以解锁存款管家',
+        description: '使用已注册的指纹或面容',
+        cancelButtonTitle: '取消',
+        fallbackButtonTitle: '使用密码',
+        disableBackup: false
+      }, () => resolve(true), (err) => reject(err || new Error('认证失败')));
+    }catch(e){
+      reject(e);
+    }
+  });
+}
+
+/* ================================================================
+   三、锁屏界面
+================================================================ */
+function buildLockScreenHTML(hasPwd, bioAvailable){
+  return `
+    <div class="lock-card" id="lockCard">
+      <div class="lock-icon">🔒</div>
+      <div class="lock-title">存款管家已锁定</div>
+      <div class="lock-subtitle">${hasPwd ? '请输入密码解锁' : '请验证身份解锁'}</div>
+
+      ${hasPwd ? `
+        <div class="lock-input-wrap">
+          <input type="password" id="lockPassword" class="lock-input"
+                 inputmode="text" autocomplete="off" placeholder="••••••" maxlength="64">
+          <button type="button" class="lock-eye" id="lockEye" title="显示/隐藏">👁️</button>
+        </div>
+      ` : ''}
+
+      <div class="lock-error" id="lockError"></div>
+
+      ${hasPwd ? `<button class="lock-btn success" id="lockSubmit">🔓 解锁</button>` : ''}
+      ${bioAvailable ? `<button class="lock-biometric" id="lockBio">👆 使用指纹 / 面容解锁</button>` : ''}
+
+      <div class="lock-attempts" id="lockAttempts"></div>
+      <div class="lock-footer">🛡️ 本地加密 · 数据不出设备</div>
+    </div>`;
+}
+
+async function showLockScreen(){
+  const hasPwd = hasAppPassword();
+  const bioEnabled = localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
+
+  // 未设置任何锁，直接放行
+  if(!hasPwd && !bioEnabled) return;
+
+  await waitForDeviceReady(1500);
+  const bioAvailable = bioEnabled && await checkBiometricSupport();
+
+  return new Promise(resolve => {
+    const lockDiv = document.createElement('div');
+    lockDiv.className = 'lock-screen';
+    lockDiv.innerHTML = buildLockScreenHTML(hasPwd, bioAvailable);
+    document.body.appendChild(lockDiv);
+
+    const card = lockDiv.querySelector('#lockCard');
+    const errEl = lockDiv.querySelector('#lockError');
+    const attemptsEl = lockDiv.querySelector('#lockAttempts');
+    const pwdInput = lockDiv.querySelector('#lockPassword');
+    const eyeBtn = lockDiv.querySelector('#lockEye');
+    const submitBtn = lockDiv.querySelector('#lockSubmit');
+    const bioBtn = lockDiv.querySelector('#lockBio');
+
+    let failCount = parseInt(localStorage.getItem(SEC_FAIL_COUNT_KEY) || '0', 10) || 0;
+    let locked = false;
+
+    function refreshAttempts(){
+      if(failCount > 0){
+        attemptsEl.textContent = `⚠️ 已失败 ${failCount} 次`;
+      }else{
+        attemptsEl.textContent = '';
+      }
+    }
+    refreshAttempts();
+
+    function showError(msg){
+      errEl.textContent = msg;
+      card.classList.remove('lock-shake');
+      void card.offsetWidth;
+      card.classList.add('lock-shake');
+    }
+
+    function unlockSuccess(){
+      lockDiv.style.transition = 'opacity 0.25s ease';
+      lockDiv.style.opacity = '0';
+      setTimeout(()=>{
+        lockDiv.remove();
+        resolve();
+      }, 250);
+    }
+
+    async function tryPassword(){
+      if(locked) return;
+      const pwd = (pwdInput?.value || '').trim();
+      if(!pwd){
+        showError('请输入密码');
+        return;
+      }
+      const ok = await verifyPassword(pwd);
+      if(ok){
+        failCount = 0;
+        localStorage.setItem(SEC_FAIL_COUNT_KEY, '0');
+        unlockSuccess();
+      }else{
+        failCount++;
+        localStorage.setItem(SEC_FAIL_COUNT_KEY, String(failCount));
+        refreshAttempts();
+        showError(`密码错误（第 ${failCount} 次）`);
+        if(pwdInput){ pwdInput.value = ''; pwdInput.focus(); }
+        // 连续失败 5 次后进入 30 秒冷却
+        if(failCount >= 5 && failCount % 5 === 0){
+          locked = true;
+          const cd = 30;
+          let remain = cd;
+          showError(`失败次数过多，请 ${remain} 秒后再试`);
+          if(submitBtn) submitBtn.disabled = true;
+          if(bioBtn) bioBtn.disabled = true;
+          const t = setInterval(()=>{
+            remain--;
+            if(remain <= 0){
+              clearInterval(t);
+              locked = false;
+              if(submitBtn) submitBtn.disabled = false;
+              if(bioBtn) bioBtn.disabled = false;
+              showError('可以继续尝试了');
+            }else{
+              showError(`失败次数过多，请 ${remain} 秒后再试`);
+            }
+          }, 1000);
+        }
+      }
+    }
+
+    if(eyeBtn && pwdInput){
+      eyeBtn.onclick = ()=>{
+        const isPwd = pwdInput.type === 'password';
+        pwdInput.type = isPwd ? 'text' : 'password';
+        eyeBtn.textContent = isPwd ? '🙈' : '👁️';
+      };
+    }
+
+    if(submitBtn){
+      submitBtn.onclick = tryPassword;
+    }
+    if(pwdInput){
+      pwdInput.addEventListener('keydown', e=>{
+        if(e.key === 'Enter') tryPassword();
+      });
+      setTimeout(()=>pwdInput.focus(), 180);
+    }
+
+    if(bioBtn){
+      bioBtn.onclick = async ()=>{
+        if(locked) return;
+        errEl.textContent = '';
+        try{
+          await authenticateWithBiometric();
+          failCount = 0;
+          localStorage.setItem(SEC_FAIL_COUNT_KEY, '0');
+          unlockSuccess();
+        }catch(err){
+          const msg = (err && (err.message || err)) || '认证失败';
+          showError(typeof msg === 'string' ? msg : '认证未通过');
+        }
+      };
+      // 自动弹指纹（首次进入延迟一点点，体验更好）
+      setTimeout(()=>{
+        if(!locked && bioBtn && document.body.contains(bioBtn)){
+          bioBtn.click();
+        }
+      }, 320);
+    }
+  });
+}
+
+/* ================================================================
+   四、安全设置弹窗
+================================================================ */
+async function showSecuritySettings(){
+  const hasPwd = hasAppPassword();
+  const bioEnabled = localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
+  const autoLockEnabled = localStorage.getItem(SEC_AUTO_LOCK_KEY) !== '0';
+  const bioAvailable = await checkBiometricSupport();
+  const pluginReady = isBiometricPluginAvailable();
+
+  const modalDiv = document.createElement('div');
+  modalDiv.className = 'modal';
+  modalDiv.innerHTML = `
+    <div class="modal-content" style="max-width:460px;">
+      <h3>🔐 安全设置</h3>
+
+      <div class="sec-row">
+        <div class="sec-row-info">
+          <div class="sec-row-title">🔑 应用密码</div>
+          <div class="sec-row-desc">${hasPwd ? '已启用，启动时需输入密码' : '未设置，任何人都能打开应用'}</div>
+        </div>
+        <button class="small ${hasPwd ? 'secondary' : 'success'}" id="secSetPwdBtn">
+          ${hasPwd ? '修改' : '设置'}
+        </button>
+      </div>
+
+      ${hasPwd ? `
+      <div class="sec-row">
+        <div class="sec-row-info">
+          <div class="sec-row-title">🗑️ 移除密码</div>
+          <div class="sec-row-desc">移除后应用将不再需要密码</div>
+        </div>
+        <button class="small danger" id="secRemovePwdBtn">移除</button>
+      </div>` : ''}
+
+      <div class="sec-row">
+        <div class="sec-row-info">
+          <div class="sec-row-title">👆 指纹 / 面容解锁</div>
+          <div class="sec-row-desc">
+            ${!pluginReady
+              ? '未检测到 Cordova 插件，仅在打包为 App 后可用'
+              : (bioAvailable ? '使用系统生物识别快速解锁' : '此设备不支持生物识别')}
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="secBioToggle" ${bioEnabled ? 'checked' : ''}
+                 ${(!pluginReady || !bioAvailable) ? 'disabled' : ''}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="sec-row">
+        <div class="sec-row-info">
+          <div class="sec-row-title">⏱️ 后台自动锁定</div>
+          <div class="sec-row-desc">应用切到后台超过 5 分钟后自动锁定</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="secAutoLockToggle" ${autoLockEnabled ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <button id="secLockNowBtn" class="warning small" style="width:100%;margin-top:14px;">🔒 立即锁定应用</button>
+      <button id="secCloseBtn" class="secondary small" style="width:100%;margin-top:8px;">关闭</button>
+
+      <div style="margin-top:14px;font-size:0.7rem;color:var(--text-muted);line-height:1.6;text-align:center;">
+        🛡️ 密码采用加盐哈希后保存在本机，指纹验证由系统安全模块完成，<br>应用不会获取或上传你的生物特征数据。
+      </div>
+    </div>`;
+
+  document.body.appendChild(modalDiv);
+  const closeModal = ()=>modalDiv.remove();
+
+  // 设置 / 修改密码
+  modalDiv.querySelector('#secSetPwdBtn').onclick = ()=>{
+    closeModal();
+    showSetPasswordModal(hasPwd);
+  };
+
+  // 移除密码
+  const removeBtn = modalDiv.querySelector('#secRemovePwdBtn');
+  if(removeBtn){
+    removeBtn.onclick = async ()=>{
+      const pwd = prompt('请输入当前密码以确认移除');
+      if(pwd === null) return;
+      const ok = await verifyPassword(pwd);
+      if(!ok){
+        alert('密码错误，无法移除');
+        return;
+      }
+      if(!confirm('确定要移除应用密码吗？移除后启动时将不再需要密码。')) return;
+      removeAppPassword();
+      localStorage.setItem(SEC_BIO_ENABLED_KEY, '0');
+      closeModal();
+      showToast('✅ 密码已移除');
+    };
+  }
+
+  // 指纹开关
+  const bioToggle = modalDiv.querySelector('#secBioToggle');
+  if(bioToggle){
+    bioToggle.onchange = async ()=>{
+      if(bioToggle.checked){
+        if(!hasAppPassword()){
+          // 启用指纹前必须先设置一个密码作为兜底
+          const agree = confirm('使用指纹解锁前，需要先设置一个备用密码（当指纹不可用时使用）。现在设置吗？');
+          bioToggle.checked = false;
+          if(agree){
+            closeModal();
+            showSetPasswordModal(false, ()=>{
+              localStorage.setItem(SEC_BIO_ENABLED_KEY, '1');
+              showToast('✅ 指纹解锁已启用');
+            });
+          }
+          return;
+        }
+        try{
+          await authenticateWithBiometric();
+          localStorage.setItem(SEC_BIO_ENABLED_KEY, '1');
+          showToast('✅ 指纹解锁已启用');
+        }catch(e){
+          bioToggle.checked = false;
+          showToast('❌ 指纹验证未通过，未启用');
+        }
+      }else{
+        localStorage.setItem(SEC_BIO_ENABLED_KEY, '0');
+        showToast('已关闭指纹解锁');
+      }
+    };
+  }
+
+  // 自动锁定开关
+  const autoToggle = modalDiv.querySelector('#secAutoLockToggle');
+  if(autoToggle){
+    autoToggle.onchange = ()=>{
+      localStorage.setItem(SEC_AUTO_LOCK_KEY, autoToggle.checked ? '1' : '0');
+      showToast(autoToggle.checked ? '✅ 已开启后台自动锁定' : '已关闭后台自动锁定');
+    };
+  }
+
+  // 立即锁定
+  modalDiv.querySelector('#secLockNowBtn').onclick = async ()=>{
+    closeModal();
+    if(!hasAppPassword() && localStorage.getItem(SEC_BIO_ENABLED_KEY) !== '1'){
+      showToast('⚠️ 请先设置密码或启用指纹解锁');
+      return;
+    }
+    await showLockScreen();
+  };
+
+  modalDiv.querySelector('#secCloseBtn').onclick = closeModal;
+  modalDiv.addEventListener('click', e=>{
+    if(e.target === modalDiv) closeModal();
+  });
+}
+
+/* ---------------- 设置 / 修改密码弹窗 ---------------- */
+function showSetPasswordModal(isChange, onDone){
+  const modalDiv = document.createElement('div');
+  modalDiv.className = 'modal';
+  modalDiv.innerHTML = `
+    <div class="modal-content" style="max-width:400px;">
+      <h3>${isChange ? '🔑 修改密码' : '🔑 设置密码'}</h3>
+
+      ${isChange ? `
+        <label>当前密码</label>
+        <input type="password" id="spOld" placeholder="输入当前密码" autocomplete="off">
+      ` : ''}
+
+      <label>新密码</label>
+      <input type="password" id="spNew" placeholder="至少 4 位" autocomplete="off">
+
+      <label>确认新密码</label>
+      <input type="password" id="spConfirm" placeholder="再次输入" autocomplete="off">
+
+      <div id="spError" style="color:var(--danger);font-size:0.78rem;min-height:20px;text-align:center;"></div>
+
+      <div class="grid-2" style="margin-top:8px;">
+        <button id="spSave" class="success">💾 保存</button>
+        <button id="spCancel" class="secondary">取消</button>
+      </div>
+
+      <div style="margin-top:12px;font-size:0.7rem;color:var(--text-muted);line-height:1.6;text-align:center;">
+        密码仅保存在本机，加盐哈希后存储。<br>忘记密码将无法找回，请务必牢记。
+      </div>
+    </div>`;
+
+  document.body.appendChild(modalDiv);
+  const closeModal = ()=>modalDiv.remove();
+  const errEl = modalDiv.querySelector('#spError');
+
+  modalDiv.querySelector('#spSave').onclick = async ()=>{
+    errEl.textContent = '';
+    const oldPwd = isChange ? (modalDiv.querySelector('#spOld').value || '') : '';
+    const newPwd = modalDiv.querySelector('#spNew').value || '';
+    const confirmPwd = modalDiv.querySelector('#spConfirm').value || '';
+
+    if(isChange){
+      const ok = await verifyPassword(oldPwd);
+      if(!ok){
+        errEl.textContent = '当前密码错误';
+        return;
+      }
+    }
+    if(newPwd.length < 4){
+      errEl.textContent = '新密码至少 4 位';
+      return;
+    }
+    if(newPwd !== confirmPwd){
+      errEl.textContent = '两次输入的新密码不一致';
+      return;
+    }
+    await setAppPassword(newPwd);
+    closeModal();
+    showToast('✅ 密码已保存');
+    if(typeof onDone === 'function') onDone();
+  };
+
+  modalDiv.querySelector('#spCancel').onclick = closeModal;
+  modalDiv.addEventListener('click', e=>{
+    if(e.target === modalDiv) closeModal();
+  });
+  setTimeout(()=>{
+    const first = isChange ? modalDiv.querySelector('#spOld') : modalDiv.querySelector('#spNew');
+    if(first) first.focus();
+  }, 150);
+}
+
+/* ================================================================
+   五、IndexedDB
+================================================================ */
 const DB_NAME = 'DepositDB';
 const DB_VERSION = 5;
 let db = null;
@@ -2919,6 +3569,9 @@ function bindEvents(){
   // 修复重复
   document.getElementById('fixDataBtn').addEventListener('click',fixDuplicateRecords);
 
+  // 安全设置
+  document.getElementById('securityBtn').addEventListener('click',showSecuritySettings);
+
   // 主题切换
   document.getElementById('themeToggleBtn').addEventListener('click',toggleTheme);
 
@@ -2976,24 +3629,8 @@ function bindEvents(){
     fileInput.value = '';
   });
 
-  const restoreLabel = document.getElementById('restoreLabel');
-  if (restoreLabel) {
-    restoreLabel.addEventListener('click', (e) => {
-      e.preventDefault();
-      fileInput.click();
-    });
-  }
-
-  const jsonInput = document.getElementById('restoreJsonInput'); // 只在这里声明一次！
-  const restoreJsonLabel = document.getElementById('restoreJsonLabel');
-  if (restoreJsonLabel && jsonInput) {
-    restoreJsonLabel.addEventListener('click', (e) => {
-      e.preventDefault();
-      jsonInput.click();
-    });
-  }
-
   // JSON 恢复
+  const jsonInput = document.getElementById('restoreJsonInput');
   jsonInput.addEventListener('change',async e=>{
     if(!e.target.files.length) return;
     showLoading(true);
@@ -3070,6 +3707,24 @@ function bindEvents(){
     applyResponsive();
     window.addEventListener('resize',applyResponsive);
   }
+
+  // 自动锁定：切后台计时
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){
+      lastHiddenTime = Date.now();
+    }else{
+      const autoLockEnabled = localStorage.getItem(SEC_AUTO_LOCK_KEY) !== '0';
+      const needLock = hasAppPassword() || localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
+      if(autoLockEnabled && needLock && lastHiddenTime > 0){
+        const away = Date.now() - lastHiddenTime;
+        if(away >= SEC_LOCK_TIMEOUT_MS){
+          showLockScreen();
+        }
+      }
+      lastHiddenTime = 0;
+      if(!document.hidden) refreshData();
+    }
+  });
 }
 
 /* ================================================================
@@ -3078,6 +3733,13 @@ function bindEvents(){
 (async function init(){
   try{
     initTheme();
+
+    // ========== 安全门禁：先解锁，再进业务 ==========
+    const needLock = hasAppPassword() || localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
+    if(needLock){
+      await showLockScreen();
+    }
+
     await openDB();
     let users = await getUsers();
     if(users.length === 0){
@@ -3102,11 +3764,6 @@ function bindEvents(){
     setTimeout(()=>checkReminders(false),1200);
     setInterval(()=>checkReminders(false),24 * 3600 * 1000);
 
-    // 页面可见性变化时刷新
-    document.addEventListener('visibilitychange',()=>{
-      if(!document.hidden) refreshData();
-    });
-
     // Ctrl/Cmd + K 聚焦搜索
     document.addEventListener('keydown',e=>{
       if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
@@ -3126,12 +3783,6 @@ function bindEvents(){
 })();
 
 })();
-<script>
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js');
-  });
-}
 </script>
 </body>
 </html>
