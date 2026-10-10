@@ -29,62 +29,58 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Cordova & cordova-res
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Check required files
         run: |
-          npm install -g cordova
-          npm install -g cordova-res
+          echo "=== 仓库根目录文件 ==="
+          ls -la
+          echo "=== 检查 index.html ==="
+          test -f index.html || (echo "❌ 缺少 index.html" && exit 1)
+          echo "=== 检查 icon.png ==="
+          test -f icon.png || (echo "❌ 缺少 icon.png" && exit 1)
+          echo "✅ 必需文件都在"
 
       - name: Build APK with Cordova
         run: |
-          # 1. 创建 Cordova 项目
+          set -e
+          echo "===== 1. 创建 Cordova 项目 ====="
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
 
-          # 2. 覆盖默认的 index.html
+          echo "===== 2. 覆盖 index.html ====="
           cp ../index.html www/index.html
 
-          # 3. 准备图标资源
-          mkdir -p resources
-          cp ../icon.png resources/icon.png
-          # 检查图标尺寸是否为 1024x1024（如果不是，请自行处理）
-          file resources/icon.png
+          echo "===== 3. 修改 config.xml：AndroidX + 生物识别权限 ====="
+          sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
+          sed -i '/<\/widget>/i \    <platform name="android">\n        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n            <uses-permission android:name="android.permission.USE_FINGERPRINT" />\n        </config-file>\n    </platform>' config.xml
 
-          # 4. 直接生成干净的 config.xml（避免 sed 导致的 XML 错误）
-          cat > config.xml <<EOF
-          <?xml version='1.0' encoding='utf-8'?>
-          <widget id="com.deposit.manager" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-              <name>存款管家</name>
-              <description>存款管理助手</description>
-              <author email="dev@example.com" href="#">Deposit Manager</author>
-              <content src="index.html" />
-              <preference name="AndroidXEnabled" value="true" />
-              <platform name="android">
-                  <config-file target="AndroidManifest.xml" parent="/manifest">
-                      <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-                      <uses-permission android:name="android.permission.USE_FINGERPRINT" />
-                  </config-file>
-              </platform>
-          </widget>
-          EOF
-
-          # 5. 添加必需插件
+          echo "===== 4. 添加插件 ====="
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-file-opener2
           cordova plugin add cordova-plugin-fingerprint-aio --variable FACEID_USAGE_DESCRIPTION="使用面容ID解锁存款管家"
 
-          # 6. 添加 Android 平台
-          cordova platform add android
+          echo "===== 5. 添加 Android 平台 ====="
+          cordova platform add android@12
 
-          # 7. 生成图标（如果 icon.png 小于 1024x1024 这里会报错，可先注释掉）
-          # cordova-res android --skip-config --copy
+          echo "===== 6. 手动替换图标（跳过低效的 cordova-res） ====="
+          # 用一张图覆盖所有默认图标
+          grep -o 'res/icon/[^"]*' config.xml | sort -u | while read -r f; do
+            mkdir -p "$(dirname "$f")"
+            cp ../icon.png "$f" 2>/dev/null || true
+            echo "覆盖: $f"
+          done
 
-          # 8. 构建 Debug APK
-          cordova build android
+          echo "===== 7. 构建 APK ====="
+          cordova build android --verbose
 
-          # 9. 复制 APK 到输出目录
+          echo "===== 8. 复制 APK ====="
           mkdir -p ../output
-          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
+          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk \
+             ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
+          echo "✅ 构建完成"
 
       - name: Upload APK as Artifact
         uses: actions/upload-artifact@v6
