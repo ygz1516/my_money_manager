@@ -34,25 +34,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Force Gradle 8.7 (replace system 9.8.0)
+      - name: Install Cordova & cordova-res
         run: |
-          echo "=== 删除系统自带的 Gradle 9.8.0 ==="
-          sudo rm -rf /usr/share/gradle-9.8.0 || true
-          sudo rm -f /usr/bin/gradle || true
-
-          echo "=== 下载 Gradle 8.7 ==="
-          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O /tmp/gradle-8.7-bin.zip
-          sudo unzip -q /tmp/gradle-8.7-bin.zip -d /usr/share/
-
-          echo "=== 建立软链接 ==="
-          sudo ln -sf /usr/share/gradle-8.7/bin/gradle /usr/bin/gradle
-
-          echo "=== 验证 ==="
-          which gradle
-          gradle --version
-
-      - name: Install Cordova
-        run: npm install -g cordova
+          npm install -g cordova
+          npm install -g cordova-res
 
       - name: Check required files
         run: |
@@ -61,6 +46,15 @@ jobs:
           test -f index.html || (echo "❌ 缺少 index.html" && exit 1)
           test -f icon.png || (echo "❌ 缺少 icon.png" && exit 1)
           echo "✅ 必需文件都在"
+
+      - name: Check icon.png dimensions
+        run: |
+          echo "=== 检查 icon.png 尺寸 ==="
+          file icon.png
+          # 需要 ImageMagick，git 的 ubuntu runner 通常自带
+          if command -v identify >/dev/null 2>&1; then
+            identify icon.png || true
+          fi
 
       - name: Build APK with Cordova
         run: |
@@ -73,9 +67,8 @@ jobs:
           echo "===== 2. 覆盖 index.html ====="
           cp ../index.html www/index.html
 
-          echo "===== 3. 修改 config.xml：仅开启 AndroidX ====="
+          echo "===== 3. 修改 config.xml：开启 AndroidX ====="
           sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
-          echo "（指纹权限由 cordova-plugin-fingerprint-aio 插件自动处理）"
 
           echo "===== 4. 添加插件 ====="
           cordova plugin add cordova-plugin-file
@@ -86,21 +79,13 @@ jobs:
           echo "===== 5. 添加 Android 平台 ====="
           cordova platform add android@12
 
-          echo "===== 6. 手动覆盖图标 ====="
-          grep -o 'res/icon/[^"]*' config.xml | sort -u | while read -r f; do
-            mkdir -p "$(dirname "$f")"
-            cp ../icon.png "$f" 2>/dev/null || true
-            echo "覆盖: $f"
-          done
+          echo "===== 6. 自动生成并替换所有图标 ====="
+          mkdir -p resources
+          cp ../icon.png resources/icon.png
+          cordova-res android --skip-config --copy
+          echo "✅ 图标已生成"
 
           echo "===== 7. 构建 APK ====="
-          cordova build android --verbose
-
-          echo "===== 8. 复制 APK 到输出目录 ====="
-          mkdir -p ../output
-          cp platforms/android/app/build/outputs/apk/debug/app-debug.apk \
-             ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
-          echo "✅ 构建完成"
           cordova build android --verbose
 
           echo "===== 8. 复制 APK 到输出目录 ====="
