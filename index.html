@@ -118,7 +118,6 @@ body::before{
 }
 .app-container{max-width:900px;margin:0 auto;position:relative;z-index:1;}
 
-/* 滚动条 */
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:8px;}
@@ -306,6 +305,8 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 }
 .filter-group .date-range{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
 .filter-group .date-range input{width:130px;}
+.filter-group .dup-btn-wrap{display:flex;gap:5px;align-items:center;margin-top:2px;}
+.filter-group .dup-btn-wrap button{margin:0;}
 
 /* ============================================================
    排序行
@@ -340,9 +341,25 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 }
 .deposit-item:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px);}
 .deposit-item.duplicate{background:var(--duplicate-bg);border-left:4px solid var(--duplicate-border);}
+.deposit-item.duplicate::after{
+  content:'♻️ 重复';
+  position:absolute;top:8px;right:12px;
+  font-size:0.66rem;font-weight:800;
+  padding:2px 8px;border-radius:12px;
+  background:var(--duplicate-border);color:#3b2600;
+  box-shadow:0 2px 6px rgba(251,191,36,0.4);
+}
 .deposit-item.expired{background:var(--expired-bg);border-left:4px solid var(--expired-border);}
 .deposit-item.soon{background:var(--soon-bg);border-left:4px solid var(--soon-border);}
 .deposit-item.safe{border-left:4px solid var(--safe-border);}
+.deposit-item.highlight{
+  box-shadow:0 0 0 3px var(--primary), 0 8px 24px rgba(79,110,247,0.35);
+  animation:highlightPulse 1.4s ease;
+}
+@keyframes highlightPulse{
+  0%{box-shadow:0 0 0 0 var(--primary), 0 8px 24px rgba(79,110,247,0.5);}
+  100%{box-shadow:0 0 0 3px var(--primary), 0 8px 24px rgba(79,110,247,0.35);}
+}
 .deposit-checkbox{flex-shrink:0;padding-top:3px;}
 .deposit-checkbox input{
   width:20px;height:20px;cursor:pointer;accent-color:var(--primary);margin:0;
@@ -717,6 +734,12 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
           <option value="none">⚪ 无到期日</option>
         </select>
       </div>
+      <div class="filter-group"><span>♻️ 重复项</span>
+        <div class="dup-btn-wrap">
+          <button id="showDuplicatesBtn" class="small ghost" type="button">只看重复</button>
+          <button id="clearDuplicateFilterBtn" class="small secondary" type="button">取消</button>
+        </div>
+      </div>
       <button id="clearFiltersBtn" class="small secondary" style="align-self:flex-end;">🗑️ 清除筛选</button>
     </div>
 
@@ -885,7 +908,6 @@ function waitForDeviceReady(timeout = 1800){
   });
 }
 
-/** 兼容多种插件挂载路径 */
 function getFingerprintPlugin(){
   if(window.Fingerprint && typeof window.Fingerprint.isAvailable === 'function'){
     return window.Fingerprint;
@@ -905,7 +927,6 @@ function isBiometricPluginAvailable(){
   return !!getFingerprintPlugin();
 }
 
-/** 返回 {available:boolean, reason:string, biometryType:string} */
 function checkBiometricSupport(){
   return new Promise(resolve => {
     const plugin = getFingerprintPlugin();
@@ -1118,10 +1139,9 @@ async function showLockScreen(){
 }
 
 /* ================================================================
-   四、安全设置弹窗（修复版：等 deviceready + 显示具体原因）
+   四、安全设置弹窗
 ================================================================ */
 async function showSecuritySettings(){
-  // 等 deviceready（最多 2 秒），避免刚启动时插件还没挂载
   if(!window.cordova){
     await new Promise(r => {
       let done = false;
@@ -2049,11 +2069,25 @@ async function restoreJSON(file){
 /* ---------------- 修复重复数据 ---------------- */
 async function fixDuplicateRecords(){
   const allDepositsData = await getAllDeposits();
+
+  // 用与 detectDuplicates 相同的规范化逻辑
+  const nStr = (v) => String(v ?? '').trim().toLowerCase();
+  const nNum = (v) => {
+    const n = Number(v);
+    return isNaN(n) ? '' : n.toFixed(2);
+  };
+  const nDate = (v) => {
+    if(!v) return '';
+    const d = parseDate(v);
+    return d ? formatDate(d) : String(v).trim();
+  };
+
   const groups = new Map();
   for(let d of allDepositsData){
     const key = [
-      d.user,d.bank,d.depositType,Number(d.amount),
-      d.startDate,d.maturityDate,d.rate,d.interestType,d.notes
+      nStr(d.user), nStr(d.bank), nStr(d.depositType),
+      nNum(d.amount), nDate(d.startDate), nDate(d.maturityDate),
+      nNum(d.rate), nStr(d.interestType), nStr(d.notes)
     ].join('|');
     if(!groups.has(key)) groups.set(key,[]);
     groups.get(key).push(d);
@@ -2091,6 +2125,7 @@ let allDeposits = [];
 let duplicateIds = new Set();
 let currentFilteredDeposits = [];
 let cordovaReady = false;
+let onlyDuplicatesMode = false; // "只看重复"模式开关
 
 /* ---------------- 数据刷新 ---------------- */
 async function refreshData(){
@@ -2139,18 +2174,45 @@ function applySort(){
   });
 }
 
+/* ============ 重复检测（规范化，稳健版） ============ */
 function detectDuplicates(){
   const keyMap = new Map();
   duplicateIds.clear();
-  for(let d of allDeposits){
-    const key = `${d.user}|${d.bank}|${d.depositType}|${d.amount}|${d.startDate}|${d.maturityDate}`;
+
+  // 规范化工具
+  const nStr = (v) => String(v ?? '').trim().toLowerCase();
+  const nNum = (v) => {
+    const n = Number(v);
+    return isNaN(n) ? '' : n.toFixed(2);
+  };
+  const nDate = (v) => {
+    if(!v) return '';
+    const d = parseDate(v);
+    return d ? formatDate(d) : String(v).trim();
+  };
+
+  for(const d of allDeposits){
+    const key = [
+      nStr(d.user),
+      nStr(d.bank),
+      nStr(d.depositType),
+      nNum(d.amount),
+      nDate(d.startDate),
+      nDate(d.maturityDate),
+      nNum(d.rate)
+    ].join('|');
+
     if(keyMap.has(key)){
+      const firstId = keyMap.get(key);
       duplicateIds.add(d.id);
-      duplicateIds.add(keyMap.get(key));
+      duplicateIds.add(firstId);
     }else{
-      keyMap.set(key,d.id);
+      keyMap.set(key, d.id);
     }
   }
+
+  console.log('[重复检测] 共标记 ' + duplicateIds.size + ' 条重复，IDs =',
+    Array.from(duplicateIds));
 }
 
 function updateFilterDropdowns(){
@@ -2183,6 +2245,11 @@ function updateFilterDropdowns(){
 /* ---------------- 列表更新 ---------------- */
 async function updateList(){
   let filtered = [...allDeposits];
+
+  // "只看重复"模式：优先过滤
+  if(onlyDuplicatesMode){
+    filtered = filtered.filter(d => duplicateIds.has(d.id));
+  }
 
   const searchText = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
   if(searchText){
@@ -2244,8 +2311,9 @@ async function updateList(){
 
   const statsTextEl = document.getElementById('statsText');
   if(statsTextEl){
+    const modeTag = onlyDuplicatesMode ? ' <span class="status-badge warning">♻️ 只看重复</span>' : '';
     statsTextEl.innerHTML =
-      `📋 <b>${filtered.length}</b> 条 · 本金 <b>¥${fmt(totalAmount)}</b> · 当前利息 <b>¥${fmt(totalCurr)}</b> · 到期利息 <b>¥${fmt(totalMat)}</b>`;
+      `📋 <b>${filtered.length}</b> 条 · 本金 <b>¥${fmt(totalAmount)}</b> · 当前利息 <b>¥${fmt(totalCurr)}</b> · 到期利息 <b>¥${fmt(totalMat)}</b>${modeTag}`;
   }
 
   const dupWarn = document.getElementById('duplicateWarning');
@@ -2298,11 +2366,12 @@ function renderDepositList(filtered){
   if(!container) return;
 
   if(!filtered.length){
+    const isDupMode = onlyDuplicatesMode;
     container.innerHTML = `
       <div class="card empty-state">
-        <div class="empty-icon">🏦</div>
-        <p><b>暂无存款记录</b></p>
-        <p style="color:var(--text-muted);font-size:0.83rem;">点击上方「➕ 新增存款」开始记录</p>
+        <div class="empty-icon">${isDupMode ? '🎉' : '🏦'}</div>
+        <p><b>${isDupMode ? '当前没有重复记录' : '暂无存款记录'}</b></p>
+        <p style="color:var(--text-muted);font-size:0.83rem;">${isDupMode ? '很好，数据很干净' : '点击上方「➕ 新增存款」开始记录'}</p>
       </div>`;
     return;
   }
@@ -3652,6 +3721,28 @@ function bindEvents(){
     }
   });
 
+  // 只看重复
+  document.getElementById('showDuplicatesBtn')?.addEventListener('click',async ()=>{
+    if(duplicateIds.size === 0){
+      showToast('✅ 当前没有检测到重复项');
+      return;
+    }
+    onlyDuplicatesMode = true;
+    await updateList();
+    showToast(`♻️ 已切换到「只看重复」模式，共 ${duplicateIds.size} 条`);
+  });
+
+  // 取消只看重复
+  document.getElementById('clearDuplicateFilterBtn')?.addEventListener('click',async ()=>{
+    if(!onlyDuplicatesMode){
+      showToast('当前不在「只看重复」模式');
+      return;
+    }
+    onlyDuplicatesMode = false;
+    await updateList();
+    showToast('已退出「只看重复」模式');
+  });
+
   document.getElementById('clearFiltersBtn').addEventListener('click',()=>{
     ['filterBank','filterType','filterHolder','minAmount','maxAmount','searchInput',
      'startDateFrom','startDateTo','maturityDateFrom','maturityDateTo','statusFilter'].forEach(id=>{
@@ -3662,6 +3753,7 @@ function bindEvents(){
     const my = document.getElementById('maturityYearQuick');
     if(sy) sy.value = '';
     if(my) my.value = '';
+    onlyDuplicatesMode = false;
     updateList();
     showToast('✅ 筛选条件已清除');
   });
@@ -3715,7 +3807,6 @@ function bindEvents(){
   try{
     initTheme();
 
-    // 安全门禁：先解锁，再进业务
     const needLock = hasAppPassword() || localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
     if(needLock){
       await showLockScreen();
