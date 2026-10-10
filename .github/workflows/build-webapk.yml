@@ -7,14 +7,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04          # 固定 Ubuntu 版本，避免迁移影响
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5   # 升级到 v5（支持 Node 24）
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5 # 升级到 v5（支持 Node 24）
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -25,9 +25,9 @@ jobs:
           packages: 'platform-tools'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5 # 升级到 v5（支持 Node 24）
         with:
-          node-version: '20'
+          node-version: '20'        # 注意：这里设置的是工作流内部使用的 Node 版本，与 Action 运行时无关
 
       - name: Install Cordova & cordova-res
         run: |
@@ -43,7 +43,7 @@ jobs:
           # 2. 覆盖默认的 index.html
           cp ../index.html www/index.html
 
-          # 3. 准备图标资源（用 cordova-res 自动生成全套尺寸）
+          # 3. 准备图标资源
           mkdir -p resources
           cp ../icon.png resources/icon.png
 
@@ -71,7 +71,7 @@ jobs:
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
 
       - name: Upload APK as Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: deposit-manager-apk
           path: output/*.apk
