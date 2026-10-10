@@ -769,7 +769,7 @@ label{font-weight:600;font-size:0.79rem;color:var(--text-secondary);
 <script>
 /* ================================================================
    存款管家 · 旗舰版 Pro
-   全功能单文件应用（含密码 + 指纹识别）
+   全功能单文件应用（含密码 + 指纹识别 · 兼容修复版）
 ================================================================ */
 (function(){
 'use strict';
@@ -813,9 +813,7 @@ function randomSalt(len = 16){
   return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-/** 降级哈希（当 crypto.subtle 不可用时使用） */
 function fallbackHash(str){
-  // 多个不同初始值的 FNV-1a 混合，提高碰撞难度
   let h1 = 0x811c9dc5, h2 = 0x1000193, h3 = 0xdeadbeef;
   for(let i = 0; i < str.length; i++){
     const c = str.charCodeAt(i);
@@ -828,24 +826,18 @@ function fallbackHash(str){
           h3.toString(16).padStart(8,'0'));
 }
 
-/** 计算密码哈希（Web Crypto 优先，自动降级） */
 async function hashPassword(password, salt){
   const input = `${salt}::${password}::deposit_guard`;
-  // 迭代增强
   if(window.crypto && window.crypto.subtle && window.crypto.subtle.digest){
     try{
       let data = new TextEncoder().encode(input);
       let buf = await window.crypto.subtle.digest('SHA-256', data);
-      // 再迭代 500 次
       for(let i = 0; i < 500; i++){
         buf = await window.crypto.subtle.digest('SHA-256', buf);
       }
       return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    }catch(e){
-      // 落到降级方案
-    }
+    }catch(e){ /* fallthrough */ }
   }
-  // 降级：迭代 FNV
   let out = input;
   for(let i = 0; i < 2000; i++){
     out = fallbackHash(out + i);
@@ -864,7 +856,7 @@ async function setAppPassword(password){
 async function verifyPassword(password){
   const storedHash = localStorage.getItem(SEC_PWD_HASH_KEY);
   const salt = localStorage.getItem(SEC_PWD_SALT_KEY) || '';
-  if(!storedHash) return true; // 未设置密码
+  if(!storedHash) return true;
   const inputHash = await hashPassword(password, salt);
   return inputHash === storedHash;
 }
@@ -880,7 +872,7 @@ function removeAppPassword(){
 }
 
 /* ================================================================
-   二、指纹 / 生物识别（Cordova 插件）
+   二、指纹 / 生物识别（Cordova 插件 · 兼容多路径）
 ================================================================ */
 function waitForDeviceReady(timeout = 1800){
   if(window.cordova) return Promise.resolve(true);
@@ -893,34 +885,66 @@ function waitForDeviceReady(timeout = 1800){
   });
 }
 
-function isBiometricPluginAvailable(){
-  return !!(window.Fingerprint && typeof window.Fingerprint.isAvailable === 'function');
+/** 兼容多种插件挂载路径 */
+function getFingerprintPlugin(){
+  if(window.Fingerprint && typeof window.Fingerprint.isAvailable === 'function'){
+    return window.Fingerprint;
+  }
+  if(window.cordova && window.cordova.plugins && window.cordova.plugins.Fingerprint
+     && typeof window.cordova.plugins.Fingerprint.isAvailable === 'function'){
+    return window.cordova.plugins.Fingerprint;
+  }
+  if(window.plugins && window.plugins.Fingerprint
+     && typeof window.plugins.Fingerprint.isAvailable === 'function'){
+    return window.plugins.Fingerprint;
+  }
+  return null;
 }
 
-/** 检查设备是否支持生物识别 */
+function isBiometricPluginAvailable(){
+  return !!getFingerprintPlugin();
+}
+
+/** 返回 {available:boolean, reason:string, biometryType:string} */
 function checkBiometricSupport(){
   return new Promise(resolve => {
-    if(!isBiometricPluginAvailable()) return resolve(false);
+    const plugin = getFingerprintPlugin();
+    if(!plugin){
+      resolve({ available:false, reason:'生物识别插件未加载（请检查打包配置）', biometryType:'' });
+      return;
+    }
     try{
-      window.Fingerprint.isAvailable(
-        () => resolve(true),
-        () => resolve(false)
+      plugin.isAvailable(
+        (result) => {
+          const ok = (typeof result === 'object' && result !== null)
+            ? !!result.isAvailable
+            : true;
+          resolve({
+            available: ok,
+            reason: ok ? '' : '设备未注册指纹 / 面容',
+            biometryType: (result && result.biometryType) || ''
+          });
+        },
+        (err) => {
+          const msg = (err && (err.message || err)) || '检测失败';
+          resolve({ available:false, reason: String(msg), biometryType:'' });
+        }
       );
     }catch(e){
-      resolve(false);
+      resolve({ available:false, reason:'调用异常：' + (e.message || e), biometryType:'' });
     }
   });
 }
 
-/** 执行指纹 / 面容认证 */
 function authenticateWithBiometric(){
   return new Promise((resolve, reject) => {
-    if(!isBiometricPluginAvailable()){
+    const plugin = getFingerprintPlugin();
+    if(!plugin){
       reject(new Error('设备不支持生物识别'));
       return;
     }
     try{
-      window.Fingerprint.show({
+      plugin.show({
         title: '身份验证',
         subtitle: '请验证指纹以解锁存款管家',
         description: '使用已注册的指纹或面容',
@@ -966,11 +990,11 @@ async function showLockScreen(){
   const hasPwd = hasAppPassword();
   const bioEnabled = localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
 
-  // 未设置任何锁，直接放行
   if(!hasPwd && !bioEnabled) return;
 
   await waitForDeviceReady(1500);
-  const bioAvailable = bioEnabled && await checkBiometricSupport();
+  const bioCheck = bioEnabled ? await checkBiometricSupport() : { available:false };
+  const bioAvailable = bioCheck.available;
 
   return new Promise(resolve => {
     const lockDiv = document.createElement('div');
@@ -1017,10 +1041,7 @@ async function showLockScreen(){
     async function tryPassword(){
       if(locked) return;
       const pwd = (pwdInput?.value || '').trim();
-      if(!pwd){
-        showError('请输入密码');
-        return;
-      }
+      if(!pwd){ showError('请输入密码'); return; }
       const ok = await verifyPassword(pwd);
       if(ok){
         failCount = 0;
@@ -1032,7 +1053,6 @@ async function showLockScreen(){
         refreshAttempts();
         showError(`密码错误（第 ${failCount} 次）`);
         if(pwdInput){ pwdInput.value = ''; pwdInput.focus(); }
-        // 连续失败 5 次后进入 30 秒冷却
         if(failCount >= 5 && failCount % 5 === 0){
           locked = true;
           const cd = 30;
@@ -1088,7 +1108,6 @@ async function showLockScreen(){
           showError(typeof msg === 'string' ? msg : '认证未通过');
         }
       };
-      // 自动弹指纹（首次进入延迟一点点，体验更好）
       setTimeout(()=>{
         if(!locked && bioBtn && document.body.contains(bioBtn)){
           bioBtn.click();
@@ -1099,14 +1118,36 @@ async function showLockScreen(){
 }
 
 /* ================================================================
-   四、安全设置弹窗
+   四、安全设置弹窗（修复版：等 deviceready + 显示具体原因）
 ================================================================ */
 async function showSecuritySettings(){
+  // 等 deviceready（最多 2 秒），避免刚启动时插件还没挂载
+  if(!window.cordova){
+    await new Promise(r => {
+      let done = false;
+      const t = setTimeout(()=>{ if(!done){ done = true; r(); } }, 2000);
+      document.addEventListener('deviceready', ()=>{
+        if(!done){ done = true; clearTimeout(t); r(); }
+      }, { once:true });
+    });
+  }
+
   const hasPwd = hasAppPassword();
   const bioEnabled = localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
   const autoLockEnabled = localStorage.getItem(SEC_AUTO_LOCK_KEY) !== '0';
-  const bioAvailable = await checkBiometricSupport();
+
+  const bioCheck = await checkBiometricSupport();
+  const bioAvailable = bioCheck.available;
   const pluginReady = isBiometricPluginAvailable();
+
+  let bioDesc;
+  if(!pluginReady){
+    bioDesc = '⚠️ 未检测到生物识别插件，请检查打包配置';
+  }else if(bioAvailable){
+    bioDesc = '使用系统生物识别快速解锁';
+  }else{
+    bioDesc = '⚠️ ' + (bioCheck.reason || '此设备不支持');
+  }
 
   const modalDiv = document.createElement('div');
   modalDiv.className = 'modal';
@@ -1136,11 +1177,7 @@ async function showSecuritySettings(){
       <div class="sec-row">
         <div class="sec-row-info">
           <div class="sec-row-title">👆 指纹 / 面容解锁</div>
-          <div class="sec-row-desc">
-            ${!pluginReady
-              ? '未检测到 Cordova 插件，仅在打包为 App 后可用'
-              : (bioAvailable ? '使用系统生物识别快速解锁' : '此设备不支持生物识别')}
-          </div>
+          <div class="sec-row-desc">${bioDesc}</div>
         </div>
         <label class="switch">
           <input type="checkbox" id="secBioToggle" ${bioEnabled ? 'checked' : ''}
@@ -1171,13 +1208,11 @@ async function showSecuritySettings(){
   document.body.appendChild(modalDiv);
   const closeModal = ()=>modalDiv.remove();
 
-  // 设置 / 修改密码
   modalDiv.querySelector('#secSetPwdBtn').onclick = ()=>{
     closeModal();
     showSetPasswordModal(hasPwd);
   };
 
-  // 移除密码
   const removeBtn = modalDiv.querySelector('#secRemovePwdBtn');
   if(removeBtn){
     removeBtn.onclick = async ()=>{
@@ -1196,13 +1231,11 @@ async function showSecuritySettings(){
     };
   }
 
-  // 指纹开关
   const bioToggle = modalDiv.querySelector('#secBioToggle');
   if(bioToggle){
     bioToggle.onchange = async ()=>{
       if(bioToggle.checked){
         if(!hasAppPassword()){
-          // 启用指纹前必须先设置一个密码作为兜底
           const agree = confirm('使用指纹解锁前，需要先设置一个备用密码（当指纹不可用时使用）。现在设置吗？');
           bioToggle.checked = false;
           if(agree){
@@ -1220,7 +1253,8 @@ async function showSecuritySettings(){
           showToast('✅ 指纹解锁已启用');
         }catch(e){
           bioToggle.checked = false;
-          showToast('❌ 指纹验证未通过，未启用');
+          const msg = (e && (e.message || e)) || '认证未通过';
+          showToast('❌ ' + (typeof msg === 'string' ? msg : '指纹验证未通过，未启用'));
         }
       }else{
         localStorage.setItem(SEC_BIO_ENABLED_KEY, '0');
@@ -1229,7 +1263,6 @@ async function showSecuritySettings(){
     };
   }
 
-  // 自动锁定开关
   const autoToggle = modalDiv.querySelector('#secAutoLockToggle');
   if(autoToggle){
     autoToggle.onchange = ()=>{
@@ -1238,7 +1271,6 @@ async function showSecuritySettings(){
     };
   }
 
-  // 立即锁定
   modalDiv.querySelector('#secLockNowBtn').onclick = async ()=>{
     closeModal();
     if(!hasAppPassword() && localStorage.getItem(SEC_BIO_ENABLED_KEY) !== '1'){
@@ -2152,7 +2184,6 @@ function updateFilterDropdowns(){
 async function updateList(){
   let filtered = [...allDeposits];
 
-  // 搜索
   const searchText = (document.getElementById('searchInput')?.value || '').toLowerCase().trim();
   if(searchText){
     filtered = filtered.filter(d=>
@@ -2163,31 +2194,24 @@ async function updateList(){
     );
   }
 
-  // 银行
   const fb = document.getElementById('filterBank')?.value;
   if(fb) filtered = filtered.filter(d=>d.bank === fb);
-  // 类型
   const ft = document.getElementById('filterType')?.value;
   if(ft) filtered = filtered.filter(d=>d.depositType === ft);
-  // 持有人
   const fh = document.getElementById('filterHolder')?.value;
   if(fh) filtered = filtered.filter(d=>d.user === fh);
-  // 金额
   const minA = parseFloat(document.getElementById('minAmount')?.value);
   if(!isNaN(minA)) filtered = filtered.filter(d=>d.amount >= minA);
   const maxA = parseFloat(document.getElementById('maxAmount')?.value);
   if(!isNaN(maxA)) filtered = filtered.filter(d=>d.amount <= maxA);
-  // 存入日期
   const sdF = document.getElementById('startDateFrom')?.value;
   if(sdF) filtered = filtered.filter(d=>d.startDate && d.startDate >= sdF);
   const sdT = document.getElementById('startDateTo')?.value;
   if(sdT) filtered = filtered.filter(d=>d.startDate && d.startDate <= sdT);
-  // 到期日期
   const mdF = document.getElementById('maturityDateFrom')?.value;
   if(mdF) filtered = filtered.filter(d=>d.maturityDate && d.maturityDate >= mdF);
   const mdT = document.getElementById('maturityDateTo')?.value;
   if(mdT) filtered = filtered.filter(d=>d.maturityDate && d.maturityDate <= mdT);
-  // 状态
   const stF = document.getElementById('statusFilter')?.value;
   if(stF){
     filtered = filtered.filter(d=>{
@@ -2203,7 +2227,6 @@ async function updateList(){
 
   currentFilteredDeposits = filtered;
 
-  // ---- 汇总计算 ----
   const totalAmount = filtered.reduce((s,d)=>s+d.amount,0);
   const totalCurr = filtered.reduce((s,d)=>s+(d.currentInterest || 0),0);
   const totalMat = filtered.reduce((s,d)=>s+(d.totalInterest || 0),0);
@@ -2212,7 +2235,6 @@ async function updateList(){
   const avgRate = totalAmount > 0
     ? filtered.reduce((s,d)=>s + d.amount * (d.rate || 0),0) / totalAmount
     : 0;
-  // 日均收益：本金 × 年利率 / 365 累加（只统计未到期的）
   const dailyIncome = filtered.reduce((s,d)=>{
     const r = (d.rate != null && !isNaN(d.rate)) ? d.rate : 0;
     const st = getMaturityStatus(d);
@@ -2220,7 +2242,6 @@ async function updateList(){
     return s + d.amount * r / 100 / 365;
   },0);
 
-  // 状态条
   const statsTextEl = document.getElementById('statsText');
   if(statsTextEl){
     statsTextEl.innerHTML =
@@ -2234,7 +2255,6 @@ async function updateList(){
       : '';
   }
 
-  // 汇总卡片
   setText('scPrincipal', '¥' + fmt(totalAmount,0));
   setText('scCurrInterest','¥' + fmt(totalCurr,0));
   setText('scCurrTotal',  '¥' + fmt(totalCurrTotal,0));
@@ -2244,7 +2264,6 @@ async function updateList(){
   setText('scDailyIncome', '¥' + fmt(dailyIncome,2));
   setText('scCount',       String(filtered.length));
 
-  // Tooltip 完整数值
   setTitle('scPrincipal', `本金总额 ¥${totalAmount.toFixed(2)}`);
   setTitle('scCurrInterest', `当前利息 ¥${totalCurr.toFixed(2)}`);
   setTitle('scCurrTotal', `当前本息合计 ¥${totalCurrTotal.toFixed(2)}`);
@@ -2631,7 +2650,6 @@ async function showDepositModal(deposit=null){
     maturityInput.value = formatDate(newDate);
   });
 
-  // 反推存期（编辑时）
   if(deposit && deposit.startDate && deposit.maturityDate){
     const start = new Date(deposit.startDate);
     const end = new Date(deposit.maturityDate);
@@ -2955,7 +2973,6 @@ async function showStatsModal(){
   const depositData = months.map(m=>monthMap.get(m).deposit);
   const maturityData = months.map(m=>monthMap.get(m).maturity);
 
-  // 利率分布（按区间）
   const rateBuckets = {'0-2%':0,'2-3%':0,'3-4%':0,'4-5%':0,'5%+':0,'未知':0};
   data.forEach(d=>{
     const r = d.rate;
@@ -3241,7 +3258,6 @@ async function exportPDF(){
     const label = currentUser === null ? '所有用户合计' : currentUser;
     const nowStr = new Date().toLocaleString('zh-CN');
 
-    /* ---- 表格页 HTML ---- */
     function buildTablePageHTML(pageData,pageNum,totalPages){
       const headerRow = `
         <tr style="background:linear-gradient(90deg,#4f6ef7,#8b5cf6);color:#fff;font-weight:700;">
@@ -3295,7 +3311,6 @@ async function exportPDF(){
         </div>`;
     }
 
-    /* ---- 图表页 HTML ---- */
     function buildChartsPageHTML(uid){
       if(!hasCharts) return null;
       return `
@@ -3397,7 +3412,6 @@ async function exportPDF(){
     const margin = 10;
     const contentWidth = pageWidth - margin * 2;
 
-    // 表格分页
     const ROWS_PER_PAGE = 20;
     const tablePages = [];
     for(let i=0;i<data.length;i += ROWS_PER_PAGE){
@@ -3533,13 +3547,11 @@ function toggleTheme(){
    事件绑定
 ================================================================ */
 function bindEvents(){
-  // 用户选择
   document.getElementById('userSelect').addEventListener('change',async e=>{
     currentUser = e.target.value === '__all__' ? null : e.target.value;
     await refreshData();
   });
 
-  // 添加用户
   document.getElementById('addUserBtn').addEventListener('click',async ()=>{
     const name = prompt('请输入新用户名');
     if(name && name.trim()){
@@ -3554,34 +3566,16 @@ function bindEvents(){
     }
   });
 
-  // 管理用户
   document.getElementById('manageUserBtn').addEventListener('click',showManageUsersModal);
-
-  // 统计图表
   document.getElementById('statsBtn').addEventListener('click',showStatsModal);
-
-  // 到期提醒
   document.getElementById('remindBtn').addEventListener('click',()=>checkReminders(true));
-
-  // 到期预测
   document.getElementById('forecastBtn').addEventListener('click',showForecast);
-
-  // 修复重复
   document.getElementById('fixDataBtn').addEventListener('click',fixDuplicateRecords);
-
-  // 安全设置
   document.getElementById('securityBtn').addEventListener('click',showSecuritySettings);
-
-  // 主题切换
   document.getElementById('themeToggleBtn').addEventListener('click',toggleTheme);
-
-  // 搜索
   document.getElementById('searchInput').addEventListener('input',()=>updateList());
-
-  // 新增存款
   document.getElementById('addDepositBtn').addEventListener('click',()=>showDepositModal());
 
-  // 备份 CSV
   document.getElementById('backupCsvBtn').addEventListener('click',async ()=>{
     const deposits = await getDeposits(currentUser);
     if(!deposits.length){ showToast('⚠️ 没有可备份的数据'); return; }
@@ -3596,22 +3590,15 @@ function bindEvents(){
     }
   });
 
-  // 备份 JSON
   document.getElementById('backupJsonBtn').addEventListener('click',backupJSON);
-
-  // 备份文件夹
   document.getElementById('openBackupFolderBtn').addEventListener('click',openBackupFolder);
-
-  // 导出 PDF
   document.getElementById('pdfBtn').addEventListener('click',exportPDF);
 
-  // 排序
   document.getElementById('sortSelect').addEventListener('change',async ()=>{
     applySort();
     await updateList();
   });
 
-  // CSV 恢复
   const fileInput = document.getElementById('restoreFileInput');
   fileInput.addEventListener('change',async e=>{
     if(!e.target.files.length) return;
@@ -3629,7 +3616,6 @@ function bindEvents(){
     fileInput.value = '';
   });
 
-  // JSON 恢复
   const jsonInput = document.getElementById('restoreJsonInput');
   jsonInput.addEventListener('change',async e=>{
     if(!e.target.files.length) return;
@@ -3644,7 +3630,6 @@ function bindEvents(){
     jsonInput.value = '';
   });
 
-  // 年份快捷筛选
   document.getElementById('startYearQuick').addEventListener('change',function(){
     const y = this.value;
     document.getElementById('startDateFrom').value = y ? `${y}-01-01` : '';
@@ -3658,7 +3643,6 @@ function bindEvents(){
     updateList();
   });
 
-  // 筛选器
   const filterIds = ['filterBank','filterType','filterHolder','minAmount','maxAmount','startDateFrom','startDateTo','maturityDateFrom','maturityDateTo','statusFilter'];
   filterIds.forEach(id=>{
     const el = document.getElementById(id);
@@ -3668,7 +3652,6 @@ function bindEvents(){
     }
   });
 
-  // 清除筛选
   document.getElementById('clearFiltersBtn').addEventListener('click',()=>{
     ['filterBank','filterType','filterHolder','minAmount','maxAmount','searchInput',
      'startDateFrom','startDateTo','maturityDateFrom','maturityDateTo','statusFilter'].forEach(id=>{
@@ -3683,7 +3666,6 @@ function bindEvents(){
     showToast('✅ 筛选条件已清除');
   });
 
-  // 筛选面板折叠
   const toggleBtn = document.getElementById('filterToggleBtn');
   const panel = document.getElementById('filterPanel');
   if(toggleBtn && panel){
@@ -3708,7 +3690,6 @@ function bindEvents(){
     window.addEventListener('resize',applyResponsive);
   }
 
-  // 自动锁定：切后台计时
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden){
       lastHiddenTime = Date.now();
@@ -3734,7 +3715,7 @@ function bindEvents(){
   try{
     initTheme();
 
-    // ========== 安全门禁：先解锁，再进业务 ==========
+    // 安全门禁：先解锁，再进业务
     const needLock = hasAppPassword() || localStorage.getItem(SEC_BIO_ENABLED_KEY) === '1';
     if(needLock){
       await showLockScreen();
@@ -3760,11 +3741,9 @@ function bindEvents(){
       showToast('📱 存款管家 Pro 已就绪',3000);
     },false);
 
-    // 初始化后延迟提醒
     setTimeout(()=>checkReminders(false),1200);
     setInterval(()=>checkReminders(false),24 * 3600 * 1000);
 
-    // Ctrl/Cmd + K 聚焦搜索
     document.addEventListener('keydown',e=>{
       if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
         e.preventDefault();
