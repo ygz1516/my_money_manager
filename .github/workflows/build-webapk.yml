@@ -51,7 +51,6 @@ jobs:
         run: |
           echo "=== 检查 icon.png 尺寸 ==="
           file icon.png
-          # 需要 ImageMagick，git 的 ubuntu runner 通常自带
           if command -v identify >/dev/null 2>&1; then
             identify icon.png || true
           fi
@@ -79,10 +78,10 @@ jobs:
           echo "===== 5. 添加 Android 平台 ====="
           cordova platform add android@12
 
-          echo "===== 6. 自动生成并替换所有图标 ====="
+          echo "===== 6. 自动生成并替换所有图标（只处理图标，跳过启动图） ====="
           mkdir -p resources
           cp ../icon.png resources/icon.png
-          cordova-res android --skip-config --copy
+          cordova-res android --skip-config --copy --type icon
           echo "✅ 图标已生成"
 
           echo "===== 7. 构建 APK ====="
