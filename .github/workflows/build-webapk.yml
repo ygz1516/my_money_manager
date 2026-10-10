@@ -29,41 +29,44 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Cordova
-        run: npm install -g cordova
+      - name: Install Cordova & cordova-res
+        run: |
+          npm install -g cordova
+          npm install -g cordova-res
 
       - name: Build APK with Cordova
         run: |
           # 1. 创建 Cordova 项目
           cordova create deposit-app com.deposit.manager "存款管家"
           cd deposit-app
-          
+
           # 2. 覆盖默认的 index.html
           cp ../index.html www/index.html
-          
-          # 3. 复制图标
-          cp ../icon.png icon.png
-          sed -i 's|res/icon.png|icon.png|g' config.xml
-          
-          # 4. 修改 config.xml（开启 AndroidX + 声明生物识别权限）
-          # 如果 config.xml 里没有 <preference name="AndroidXEnabled" value="true" /> 就补上
+
+          # 3. 准备图标资源（用 cordova-res 自动生成全套尺寸）
+          mkdir -p resources
+          cp ../icon.png resources/icon.png
+
+          # 4. 修改 config.xml：开启 AndroidX + 声明生物识别权限
           sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
-          # 声明 Android 指纹权限
           sed -i '/<\/widget>/i \    <platform name="android">\n        <config-file target="AndroidManifest.xml" parent="/manifest">\n            <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n            <uses-permission android:name="android.permission.USE_FINGERPRINT" />\n        </config-file>\n    </platform>' config.xml
-          
-          # 5. 添加必需插件（文件操作、权限、打开文件夹、指纹识别）
+
+          # 5. 添加必需插件
           cordova plugin add cordova-plugin-file
           cordova plugin add cordova-plugin-android-permissions
           cordova plugin add cordova-plugin-file-opener2
           cordova plugin add cordova-plugin-fingerprint-aio --variable FACEID_USAGE_DESCRIPTION="使用面容ID解锁存款管家"
-          
+
           # 6. 添加 Android 平台
           cordova platform add android
-          
-          # 7. 构建 Debug APK
+
+          # 7. 生成并写入全套 Android 图标
+          cordova-res android --skip-config --copy
+
+          # 8. 构建 Debug APK
           cordova build android
-          
-          # 8. 创建输出目录并复制 APK（加时间戳防覆盖）
+
+          # 9. 复制 APK 到输出目录
           mkdir -p ../output
           cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../output/deposit-manager-$(date +'%Y%m%d-%H%M%S').apk
 
